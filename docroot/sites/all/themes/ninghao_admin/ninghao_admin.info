@@ -1,0 +1,4 @@
+name            = Ninghao Admin
+description     = Admin theme by ninghao.net
+core            = 7.x
+base theme      = adminimal
