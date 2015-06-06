@@ -1,0 +1,11 @@
+/**
+ * Translate interface update page.
+ */
+#l10n-update-status-form .expand .inner {
+  background: transparent url(../images/menu-collapsed-rtl.png) right .6em no-repeat;
+  margin-right: -12px;
+  padding-right: 12px;
+}
+#l10n-update-status-form .expanded .expand .inner {
+  background: transparent url(../images/menu-expanded.png) right .6em no-repeat;
+}

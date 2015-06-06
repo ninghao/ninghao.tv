@@ -1,0 +1,440 @@
+<?php
+
+/**
+ * @file
+ * Contains L10nUpdateTest.
+ */
+
+/**
+ * Tests for update translations.
+ */
+class L10nUpdateTest extends L10nUpdateTestBase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Update translations',
+      'description' => 'Tests for updating the interface translations of projects.',
+      'group' => 'Localization Update',
+    );
+  }
+
+  function setUp() {
+    parent::setUp();
+
+    $admin_user = $this->drupalCreateUser(array('administer modules', 'administer site configuration', 'administer languages', 'access administration pages', 'translate interface'));
+    $this->drupalLogin($admin_user);
+
+    // We use German as test language. This language must match the translation
+    // file that come with the l10n_update_test module (test.de.po) and can therefore
+    // not be chosen randomly.
+    $this->addLanguage('de');
+
+    module_load_include('compare.inc', 'l10n_update');
+    module_load_include('fetch.inc', 'l10n_update');
+  }
+
+  /**
+   * Checks if a list of translatable projects gets build.
+   */
+  function testUpdateProjects() {
+    module_load_include('compare.inc', 'l10n_update');
+    variable_set('l10n_update_test_projects_alter', TRUE);
+
+    // Make the test modules look like a normal custom module. i.e. make the
+    // modules not hidden. l10n_update_test_system_info_alter() modifies the project
+    // info of the l10n_update_test and l10n_update_test_translate modules.
+    variable_set('l10n_update_test_system_info_alter', TRUE);
+    $this->resetAll();
+
+    // Check if interface translation data is collected from hook_info.
+    $projects = l10n_update_project_list();
+    $this->assertFalse(isset($projects['l10n_update_test_translate']), 'Hidden module not found');
+    $this->assertEqual($projects['l10n_update_test']['info']['interface translation server pattern'], 'sites/all/modules/l10n_update/tests/test.%language.po', 'Interface translation parameter found in project info.');
+    $this->assertEqual($projects['l10n_update_test']['name'] , 'l10n_update_test', format_string('%key found in project info.', array('%key' => 'interface translation project')));
+  }
+
+  /**
+   * Checks if local or remote translation sources are detected.
+   *
+   * The translation status process by default checks the status of the
+   * installed projects. For testing purpose a predefined set of modules with
+   * fixed file names and release versions is used. This custom project
+   * definition is applied using a hook_l10n_update_projects_alter
+   * implementation in the l10n_update_test module.
+   *
+   * This test generates a set of local and remote translation files in their
+   * respective local and remote translation directory. The test checks whether
+   * the most recent files are selected in the different check scenarios: check
+   * for local files only, check for both local and remote files.
+   */
+  function testUpdateCheckStatus() {
+    // Set a flag to let the l10n_update_test module replace the project data with a
+    // set of test projects.
+    variable_set('l10n_update_test_projects_alter', TRUE);
+
+    // Create local and remote translations files.
+    $this->setTranslationFiles();
+    variable_set('l10n_update_default_filename', '%project-%release.%language._po');
+
+    // Set the test conditions.
+    $edit = array(
+      'l10n_update_check_mode' => L10N_UPDATE_USE_SOURCE_LOCAL,
+    );
+    $this->drupalPost('admin/config/regional/language/update', $edit, t('Save configuration'));
+
+    // Get status of translation sources at local file system.
+    $this->drupalGet('admin/config/regional/translate/check');
+    $result = l10n_update_get_status();
+    $this->assertEqual($result['contrib_module_one']['de']->type, L10N_UPDATE_LOCAL, 'Translation of contrib_module_one found');
+    $this->assertEqual($result['contrib_module_one']['de']->timestamp, $this->timestamp_old, 'Translation timestamp found');
+    $this->assertEqual($result['contrib_module_two']['de']->type, L10N_UPDATE_LOCAL, 'Translation of contrib_module_two found');
+    $this->assertEqual($result['contrib_module_two']['de']->timestamp, $this->timestamp_new, 'Translation timestamp found');
+    $this->assertEqual($result['l10n_update_test']['de']->type, L10N_UPDATE_LOCAL, 'Translation of l10n_update_test found');
+    $this->assertEqual($result['custom_module_one']['de']->type, L10N_UPDATE_LOCAL, 'Translation of custom_module_one found');
+
+    // Set the test conditions.
+    $edit = array(
+      'l10n_update_check_mode' => L10N_UPDATE_USE_SOURCE_REMOTE_AND_LOCAL,
+    );
+    $this->drupalPost('admin/config/regional/language/update', $edit, t('Save configuration'));
+
+    // Get status of translation sources at both local and remote locations.
+    $this->drupalGet('admin/config/regional/translate/check');
+    $result = l10n_update_get_status();
+    $this->assertEqual($result['contrib_module_one']['de']->type, L10N_UPDATE_REMOTE, 'Translation of contrib_module_one found');
+    $this->assertEqual($result['contrib_module_one']['de']->timestamp, $this->timestamp_new, 'Translation timestamp found');
+    $this->assertEqual($result['contrib_module_two']['de']->type, L10N_UPDATE_LOCAL, 'Translation of contrib_module_two found');
+    $this->assertEqual($result['contrib_module_two']['de']->timestamp, $this->timestamp_new, 'Translation timestamp found');
+    $this->assertEqual($result['contrib_module_three']['de']->type, L10N_UPDATE_LOCAL, 'Translation of contrib_module_three found');
+    $this->assertEqual($result['contrib_module_three']['de']->timestamp, $this->timestamp_old, 'Translation timestamp found');
+    $this->assertEqual($result['l10n_update_test']['de']->type, L10N_UPDATE_LOCAL, 'Translation of l10n_update_test found');
+    $this->assertEqual($result['custom_module_one']['de']->type, L10N_UPDATE_LOCAL, 'Translation of custom_module_one found');
+  }
+
+  /**
+   * Tests translation import from remote sources.
+   *
+   * Test conditions:
+   *  - Source: remote and local files
+   *  - Import overwrite: all existing translations
+   */
+  function testUpdateImportSourceRemote() {
+    // Build the test environment.
+    $this->setTranslationFiles();
+    $this-> setCurrentTranslations();
+    variable_set('l10n_update_default_filename', '%project-%release.%language._po');
+
+    // Set the update conditions for this test.
+    $edit = array(
+      'l10n_update_check_mode' => L10N_UPDATE_USE_SOURCE_REMOTE_AND_LOCAL,
+      'overwrite' => LOCALE_IMPORT_OVERWRITE,
+    );
+    $this->drupalPost('admin/config/regional/language/update', $edit, t('Save configuration'));
+
+    // Get the translation status.
+    $this->drupalGet('admin/config/regional/translate/check');
+
+    // Check the status on the Available translation status page.
+    $this->assertRaw('<label class="element-invisible" for="edit-langcodes-de">Update German </label>', 'German language found');
+    $this->assertText('Updates for: Contributed module one, Contributed module two, Custom module one, Locale test', 'Updates found');
+    $this->assertText('Contributed module one (' . format_date($this->timestamp_new, 'medium') . ')', 'Updates for Contrib module one');
+    $this->assertText('Contributed module two (' . format_date($this->timestamp_new, 'medium') . ')', 'Updates for Contrib module two');
+
+    // Execute the translation update.
+    $this->drupalPost('admin/config/regional/translate/update', array(), t('Update translations'));
+
+    // Check if the translation has been updated, using the status cache.
+    $status = l10n_update_get_status();
+    $this->assertEqual($status['contrib_module_one']['de']->type, L10N_UPDATE_CURRENT, 'Translation of contrib_module_one found');
+    $this->assertEqual($status['contrib_module_two']['de']->type, L10N_UPDATE_CURRENT, 'Translation of contrib_module_two found');
+    $this->assertEqual($status['contrib_module_three']['de']->type, L10N_UPDATE_CURRENT, 'Translation of contrib_module_three found');
+
+    // Check the new translation status.
+    // The static cache needs to be flushed first to get the most recent data
+    // from the database. The function was called earlier during this test.
+    drupal_static_reset('l10n_update_get_file_history');
+    $history = l10n_update_get_file_history();
+    $this->assertTrue($history['contrib_module_one']['de']->timestamp >= $this->timestamp_now, 'Translation of contrib_module_one is imported');
+    $this->assertTrue($history['contrib_module_one']['de']->last_checked >= $this->timestamp_now, 'Translation of contrib_module_one is updated');
+    $this->assertEqual($history['contrib_module_two']['de']->timestamp, $this->timestamp_new, 'Translation of contrib_module_two is imported');
+    $this->assertTrue($history['contrib_module_two']['de']->last_checked >= $this->timestamp_now, 'Translation of contrib_module_two is updated');
+    $this->assertEqual($history['contrib_module_three']['de']->timestamp, $this->timestamp_medium, 'Translation of contrib_module_three is not imported');
+    $this->assertEqual($history['contrib_module_three']['de']->last_checked, $this->timestamp_medium, 'Translation of contrib_module_three is not updated');
+
+    // Check whether existing translations have (not) been overwritten.
+    $this->assertEqual(t('January', array(), array('langcode' => 'de')), 'Januar_1', 'Translation of January');
+    $this->assertEqual(t('February', array(), array('langcode' => 'de')), 'Februar_2', 'Translation of February');
+    $this->assertEqual(t('March', array(), array('langcode' => 'de')), 'Marz_2', 'Translation of March');
+    $this->assertEqual(t('April', array(), array('langcode' => 'de')), 'April_2', 'Translation of April');
+    $this->assertEqual(t('May', array(), array('langcode' => 'de')), 'Mai_customized', 'Translation of May');
+    $this->assertEqual(t('June', array(), array('langcode' => 'de')), 'Juni', 'Translation of June');
+    $this->assertEqual(t('Monday', array(), array('langcode' => 'de')), 'Montag', 'Translation of Monday');
+  }
+
+  /**
+   * Tests translation import from local sources.
+   *
+   * Test conditions:
+   *  - Source: local files only
+   *  - Import overwrite: all existing translations
+   */
+  function testUpdateImportSourceLocal() {
+    // Build the test environment.
+    $this->setTranslationFiles();
+    $this-> setCurrentTranslations();
+    variable_set('l10n_update_default_filename', '%project-%release.%language._po');
+
+    // Set the update conditions for this test.
+    $edit = array(
+      'l10n_update_check_mode' => L10N_UPDATE_USE_SOURCE_LOCAL,
+      'overwrite' => LOCALE_IMPORT_OVERWRITE,
+    );
+    $this->drupalPost('admin/config/regional/language/update', $edit, t('Save configuration'));
+
+    // Execute the translation update.
+    $this->drupalGet('admin/config/regional/translate/check');
+    $this->drupalPost('admin/config/regional/translate/update', array(), t('Update translations'));
+
+    // Check if the translation has been updated, using the status cache.
+    $status = l10n_update_get_status();
+    $this->assertEqual($status['contrib_module_one']['de']->type, L10N_UPDATE_CURRENT, 'Translation of contrib_module_one found');
+    $this->assertEqual($status['contrib_module_two']['de']->type, L10N_UPDATE_CURRENT, 'Translation of contrib_module_two found');
+    $this->assertEqual($status['contrib_module_three']['de']->type, L10N_UPDATE_CURRENT, 'Translation of contrib_module_three found');
+
+    // Check the new translation status.
+    // The static cache needs to be flushed first to get the most recent data
+    // from the database. The function was called earlier during this test.
+    drupal_static_reset('l10n_update_get_file_history');
+    $history = l10n_update_get_file_history();
+    $this->assertTrue($history['contrib_module_one']['de']->timestamp >= $this->timestamp_medium, 'Translation of contrib_module_one is imported');
+    $this->assertEqual($history['contrib_module_one']['de']->last_checked, $this->timestamp_medium, 'Translation of contrib_module_one is updated');
+    $this->assertEqual($history['contrib_module_two']['de']->timestamp, $this->timestamp_new, 'Translation of contrib_module_two is imported');
+    $this->assertTrue($history['contrib_module_two']['de']->last_checked >= $this->timestamp_now, 'Translation of contrib_module_two is updated');
+    $this->assertEqual($history['contrib_module_three']['de']->timestamp, $this->timestamp_medium, 'Translation of contrib_module_three is not imported');
+    $this->assertEqual($history['contrib_module_three']['de']->last_checked, $this->timestamp_medium, 'Translation of contrib_module_three is not updated');
+
+    // Check whether existing translations have (not) been overwritten.
+    $this->assertEqual(t('January', array(), array('langcode' => 'de')), 'Januar_customized', 'Translation of January');
+    $this->assertEqual(t('February', array(), array('langcode' => 'de')), 'Februar_2', 'Translation of February');
+    $this->assertEqual(t('March', array(), array('langcode' => 'de')), 'Marz_2', 'Translation of March');
+    $this->assertEqual(t('April', array(), array('langcode' => 'de')), 'April_2', 'Translation of April');
+    $this->assertEqual(t('May', array(), array('langcode' => 'de')), 'Mai_customized', 'Translation of May');
+    $this->assertEqual(t('June', array(), array('langcode' => 'de')), 'Juni', 'Translation of June');
+    $this->assertEqual(t('Monday', array(), array('langcode' => 'de')), 'Montag', 'Translation of Monday');
+  }
+
+  /**
+   * Tests translation import and only overwrite non-customized translations.
+   *
+   * Test conditions:
+   *  - Source: remote and local files
+   *  - Import overwrite: only overwrite non-customized translations
+   */
+  function testUpdateImportModeNonCustomized() {
+    // Build the test environment.
+    $this->setTranslationFiles();
+    $this-> setCurrentTranslations();
+    variable_set('l10n_update_default_filename', '%project-%release.%language._po');
+
+    // Set the test conditions.
+    $edit = array(
+      'l10n_update_check_mode' => L10N_UPDATE_USE_SOURCE_REMOTE_AND_LOCAL,
+      'overwrite' => L10N_UPDATE_OVERWRITE_NON_CUSTOMIZED,
+    );
+    $this->drupalPost('admin/config/regional/language/update', $edit, t('Save configuration'));
+
+    // Execute translation update.
+    $this->drupalGet('admin/config/regional/translate/check');
+    $this->drupalPost('admin/config/regional/translate/update', array(), t('Update translations'));
+
+    // Check whether existing translations have (not) been overwritten.
+    $this->assertEqual(t('January', array(), array('langcode' => 'de')), 'Januar_customized', 'Translation of January');
+    $this->assertEqual(t('February', array(), array('langcode' => 'de')), 'Februar_customized', 'Translation of February');
+    $this->assertEqual(t('March', array(), array('langcode' => 'de')), 'Marz_2', 'Translation of March');
+    $this->assertEqual(t('April', array(), array('langcode' => 'de')), 'April_2', 'Translation of April');
+    $this->assertEqual(t('May', array(), array('langcode' => 'de')), 'Mai_customized', 'Translation of May');
+    $this->assertEqual(t('June', array(), array('langcode' => 'de')), 'Juni', 'Translation of June');
+    $this->assertEqual(t('Monday', array(), array('langcode' => 'de')), 'Montag', 'Translation of Monday');
+  }
+
+  /**
+   * Tests translation import and don't overwrite any translation.
+   *
+   * Test conditions:
+   *  - Source: remote and local files
+   *  - Import overwrite: don't overwrite any existing translation
+   */
+  function testUpdateImportModeNone() {
+    // Build the test environment.
+    $this->setTranslationFiles();
+    $this-> setCurrentTranslations();
+    variable_set('l10n_update_default_filename', '%project-%release.%language._po');
+
+    // Set the test conditions.
+    $edit = array(
+      'l10n_update_check_mode' => L10N_UPDATE_USE_SOURCE_REMOTE_AND_LOCAL,
+      'overwrite' => LOCALE_IMPORT_KEEP,
+    );
+    $this->drupalPost('admin/config/regional/language/update', $edit, t('Save configuration'));
+
+    // Execute translation update.
+    $this->drupalGet('admin/config/regional/translate/check');
+    $this->drupalPost('admin/config/regional/translate/update', array(), t('Update translations'));
+
+    // Check whether existing translations have (not) been overwritten.
+    $this->assertTranslation('January', 'Januar_customized', 'de');
+    $this->assertTranslation('February', 'Februar_customized', 'de');
+    $this->assertTranslation('March', 'Marz', 'de');
+    $this->assertTranslation('April', 'April_2', 'de');
+    $this->assertTranslation('May', 'Mai_customized', 'de');
+    $this->assertTranslation('June', 'Juni', 'de');
+    $this->assertTranslation('Monday', 'Montag', 'de');
+  }
+
+  /**
+   * Tests automatic translation import when a module is enabled.
+   */
+  function testEnableUninstallModule() {
+    // Make the hidden test modules look like a normal custom module.
+    variable_set('l10n_update_test_system_info_alter', TRUE);
+
+    // Check if there is no translation yet.
+    $this->assertTranslation('Tuesday', '', 'de');
+
+    // Enable a module.
+    $edit = array(
+      'modules[Testing][l10n_update_test_translate][enable]' => '1',
+    );
+    $this->drupalPost('admin/modules', $edit, t('Save configuration'));
+
+    // Check if translations have been imported.
+    $this->assertRaw(t('One translation file imported. %number translations were added, %update translations were updated and %delete translations were removed.',
+      array('%number' => 0, '%update' => 7, '%delete' => 0)), 'One translation file imported.');
+    $this->assertTranslation('Tuesday', 'Dienstag', 'de');
+
+//    // Disable and uninstall a module
+//    module_disable(array('l10n_update_test_translate'));
+//    $edit = array(
+//      'uninstall[l10n_update_test_translate]' => '1',
+//    );
+//    $this->drupalPost('admin/modules/uninstall', $edit, t('Uninstall'));
+//    $this->drupalPost(NULL, array(), t('Uninstall'));
+//
+//    // Check if the file data is removed from the database.
+//    $history = l10n_update_get_file_history();
+//    $this->assertFalse(isset($history['l10n_update_test_translate']), 'Project removed from the file history');
+//    $projects = l10n_update_get_projects();
+//    $this->assertFalse(isset($projects['l10n_update_test_translate']), 'Project removed from the project list');
+  }
+
+  /**
+   * Tests automatic translation import when a langauge is enabled.
+   *
+   * When a language is added, the system will check for translations files of
+   * enabled modules and will import them. When a language is removed the system
+   * will remove all translations of that langugue from the database.
+   */
+  function testEnableLanguage() {
+    // Make the hidden test modules look like a normal custom module.
+    variable_set('l10n_update_test_system_info_alter', TRUE);
+
+    // Enable a module.
+    $edit = array(
+      'modules[Testing][l10n_update_test_translate][enable]' => '1',
+    );
+    $this->drupalPost('admin/modules', $edit, t('Save configuration'));
+
+    // Check if there is no Dutch translation yet.
+    $this->assertTranslation('Extraday', '', 'nl');
+    $this->assertTranslation('Tuesday', 'Dienstag', 'de');
+
+    // Add a language.
+    $this->addLanguage('nl');
+
+    // Check if the right number of translations are added.
+    $this->assertRaw(t('One translation file imported. %number translations were added, %update translations were updated and %delete translations were removed.',
+      array('%number' => 0, '%update' => 8, '%delete' => 0)), 'One language added.');
+    $this->assertTranslation('Extraday', 'extra dag', 'nl');
+
+    // Check if the language data is added to the database.
+    $result = db_query("SELECT project FROM {l10n_update_file} WHERE language='nl'")->fetchField();
+    $this->assertTrue((boolean) $result, 'Files removed from file history');
+
+    // Remove a language.
+    $this->drupalPost('admin/config/regional/language/delete/nl', array(), t('Delete'));
+
+    // Check if the language data is removed from the database.
+    $result = db_query("SELECT project FROM {l10n_update_file} WHERE language='nl'")->fetchField();
+    $this->assertFalse($result, 'Files removed from file history');
+
+    // Check that the Dutch translation is gone.
+    $this->assertTranslation('Extraday', '', 'nl');
+    $this->assertTranslation('Tuesday', 'Dienstag', 'de');
+  }
+
+  /**
+   * Tests automatic translation import when a custom langauge is enabled.
+   */
+  function testEnableCustomLanguage() {
+    // Make the hidden test modules look like a normal custom module.
+    variable_set('l10n_update_test_system_info_alter', TRUE);
+
+    // Enable a module.
+    $edit = array(
+      'modules[Testing][l10n_update_test_translate][enable]' => '1',
+    );
+    $this->drupalPost('admin/modules', $edit, t('Save configuration'));
+
+    // Create and enable a custom language with language code 'xx' and a random
+    // name.
+    $langcode = 'xx';
+    $name = $this->randomName(16);
+    $edit = array(
+      'langcode' => $langcode,
+      'name' => $name,
+      'native' => $name,
+      'prefix' => $langcode,
+      'direction' => '0',
+    );
+    $this->drupalPost('admin/config/regional/language/add', $edit, t('Add custom language'));
+    drupal_static_reset('language_list');
+    $languages = language_list();
+    $this->assertTrue(isset($languages[$langcode]), format_string('Language %langcode added.', array('%langcode' => $langcode)));
+
+    // Ensure the translation file is automatically imported when the language
+    // was added.
+    $this->assertText(t('One translation file imported.'), 'Language file automatically imported.');
+    $this->assertText(t('One translation string was skipped because of disallowed or malformed HTML'), 'Language file automatically imported.');
+
+    // Ensure the strings were successfully imported.
+    $search = array(
+      'string' => 'lundi',
+      'language' => $langcode,
+      'translation' => 'translated',
+    );
+    $this->drupalPost('admin/config/regional/translate/translate', $search, t('Filter'));
+    $this->assertNoText(t('No strings available.'), 'String successfully imported.');
+
+    // Ensure the multiline string was imported.
+    $search = array(
+      'string' => 'Source string for multiline translation',
+      'language' => $langcode,
+      'translation' => 'all',
+    );
+    $this->drupalPost('admin/config/regional/translate/translate', $search, t('Filter'));
+    $this->assertText('Source string for multiline translation', 'String successfully imported.');
+
+    // Ensure 'Allowed HTML source string' was imported but the translation for
+    // 'Another allowed HTML source string' was not because it contains invalid
+    // HTML.
+    $search = array(
+      'string' => 'HTML source string',
+      'language' => $langcode,
+      'translation' => 'translated',
+    );
+    $this->drupalPost('admin/config/regional/translate/translate', $search, t('Filter'));
+//    $this->assertText('Allowed HTML source string', 'String successfully imported.');
+    $this->assertNoText('Another allowed HTML source string', 'String with disallowed translation not imported.');
+  }
+
+}

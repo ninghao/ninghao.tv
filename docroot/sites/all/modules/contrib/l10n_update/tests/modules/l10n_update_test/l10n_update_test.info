@@ -1,0 +1,14 @@
+name = 'Localization Update test'
+type = module
+description = 'Support module for Localization Update module testing.'
+package = Testing
+version = '1.2'
+core = 7.x
+hidden = true
+
+; Information added by Drupal.org packaging script on 2015-03-10
+version = "7.x-2.0+9-dev"
+core = "7.x"
+project = "l10n_update"
+datestamp = "1426020783"
+

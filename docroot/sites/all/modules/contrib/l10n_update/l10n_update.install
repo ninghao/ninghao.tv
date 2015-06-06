@@ -1,0 +1,369 @@
+<?php
+
+/**
+ * @file
+ *   Install file for l10n remote updates.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function l10n_update_schema() {
+  $schema['l10n_update_project'] = array(
+    'description' => 'Update information for project translations.',
+    'fields' => array(
+      'name' => array(
+        'description' => 'A unique short name to identify the project.',
+        'type' => 'varchar',
+        'length' => '50',
+        'not null' => TRUE,
+      ),
+      'project_type' => array(
+        'description' => 'Project type, may be core, module, theme',
+        'type' => 'varchar',
+        'length' => '50',
+        'not null' => TRUE,
+      ),
+      'core' => array(
+        'description' => 'Core compatibility string for this project.',
+        'type' => 'varchar',
+        'length' => '128',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'version' => array(
+        'description' => 'Human readable name for project used on the interface.',
+        'type' => 'varchar',
+        'length' => '128',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'l10n_path' => array(
+        'description' => 'Server path this project updates.',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'status' => array(
+        'description' => 'Status flag. If TRUE, translations of this module will be updated.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+    ),
+    'primary key' => array('name'),
+  );
+
+  $schema['l10n_update_file'] = array(
+    'description' => 'File and download information for project translations.',
+    'fields' => array(
+      'project' => array(
+        'description' => 'A unique short name to identify the project.',
+        'type' => 'varchar',
+        'length' => '50',
+        'not null' => TRUE,
+      ),
+      'language' => array(
+        'description' => 'Reference to the {languages}.language for this translation.',
+        'type' => 'varchar',
+        'length' => '12',
+        'not null' => TRUE,
+      ),
+      'type' => array(
+        'description' => 'File origin: download or localfile',
+        'type' => 'varchar',
+        'length' => '50',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'filename' => array(
+        'description' => 'Link to translation file for download.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'fileurl' => array(
+        'description' => 'Link to translation file for download.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'uri' => array(
+        'description' => 'File system path for importing the file.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'timestamp' => array(
+        'description' => 'Unix timestamp of the time the file was downloaded or saved to disk. Zero if not yet downloaded',
+        'type' => 'int',
+        'not null' => FALSE,
+        'disp-width' => '11',
+        'default' => 0,
+      ),
+      'version' => array(
+        'description' => 'Version tag of the downloaded file.',
+        'type' => 'varchar',
+        'length' => '128',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'status' => array(
+        'description' => 'Status flag. TBD',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+      'last_checked' => array(
+        'description' => 'Unix timestamp of the last time this translation was downloaded from or checked at remote server and confirmed to be the most recent release available.',
+        'type' => 'int',
+        'not null' => FALSE,
+        'disp-width' => '11',
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('project', 'language'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_schema_alter().
+ */
+function l10n_update_schema_alter(&$schema) {
+  $schema['locales_target']['fields']['l10n_status'] = array(
+    'type' => 'int',
+    'not null' => TRUE,
+    'default' => 0,
+    'description' => 'Boolean indicating whether the translation is custom to this site.',
+  );
+}
+
+/**
+ * Implements hook_install().
+ */
+function l10n_update_install() {
+  db_add_field('locales_target', 'l10n_status', array('type' => 'int', 'not null' => TRUE, 'default' => 0));
+  variable_set('l10n_update_rebuild_projects', 1);
+
+  // Create the translation directory. We try different alternative paths as the
+  // default may not always be writable.
+  $directories = array(
+    variable_get('l10n_update_download_store', L10N_UPDATE_DEFAULT_TRANSLATION_PATH),
+    variable_get('file_public_path', conf_path() . '/files') . '/translations',
+    'sites/default/files/translations',
+  );
+  foreach ($directories as $directory) {
+    if (file_prepare_directory($directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS)) {
+      variable_set('l10n_update_download_store', $directory);
+      return;
+    }
+  }
+  watchdog('l10n_update', 'The directory %directory does not exist or is not writable.', array('%directory' => $directories[0]), WATCHDOG_ERROR);
+  drupal_set_message(t('The directory %directory does not exist or is not writable.', array('%directory' => $directories[0])), 'error');
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function l10n_update_uninstall() {
+  db_drop_field('locales_target', 'l10n_status');
+
+  variable_del('l10n_update_check_disabled');
+  variable_del('l10n_update_default_filename');
+  variable_del('l10n_update_default_update_url');
+  variable_del('l10n_update_import_enabled');
+  variable_del('l10n_update_import_mode');
+  variable_del('l10n_update_check_frequency');
+  variable_del('l10n_update_last_check');
+  variable_del('l10n_update_download_store');
+  variable_del('l10n_update_translation_status');
+  variable_del('l10n_update_check_mode');}
+
+/**
+ * Implements hook_requirements().
+ */
+function l10n_update_requirements($phase) {
+  $requirements = array();
+  if ($phase == 'runtime') {
+    $available_updates = array();
+    $untranslated = array();
+    $languages = l10n_update_translatable_language_list();
+
+    if ($languages) {
+      // Determine the status of the translation updates per language.
+      $status = l10n_update_get_status();
+      if ($status) {
+        foreach ($status as $project) {
+          foreach ($project as $langcode => $project_info) {
+            if (empty($project_info->type)) {
+              $untranslated[$langcode] = $languages[$langcode];
+            }
+            elseif ($project_info->type == L10N_UPDATE_LOCAL || $project_info->type == L10N_UPDATE_REMOTE) {
+              $available_updates[$langcode] = $languages[$langcode];
+            }
+          }
+        }
+
+        if ($available_updates || $untranslated) {
+          if ($available_updates) {
+            $requirements['l10n_update'] = array(
+              'title' => 'Translation update status',
+              'value' => l(t('Updates available'), 'admin/config/regional/translate/update'),
+              'severity' => REQUIREMENT_WARNING,
+              'description' => t('Updates available for: @languages. See the <a href="!updates">Translate interface update</a> page for more information.', array('@languages' => implode(', ', $available_updates), '!updates' => url('admin/config/regional/translate/update'))),
+            );
+          }
+          else {
+            $requirements['l10n_update'] = array(
+              'title' => 'Translation update status',
+              'value' => t('Missing translations'),
+              'severity' => REQUIREMENT_INFO,
+              'description' => t('Missing translations for: @languages. See the <a href="!updates">Translate interface update</a> page for more information.', array('@languages' => implode(', ', $untranslated), '!updates' => url('admin/config/regional/translate/update'))),
+            );
+          }
+        }
+        else {
+          $requirements['l10n_update'] = array(
+            'title' => 'Translation update status',
+            'value' => t('Up to date'),
+            'severity' => REQUIREMENT_OK,
+          );
+        }
+      }
+      else {
+        $requirements['locale_translation'] = array(
+          'title' => 'Translation update status',
+          'value' => l(t('Can not determine status'), 'admin/config/regional/translate/update'),
+          'severity' => REQUIREMENT_WARNING,
+          'description' => t('No translation status is available. See the <a href="!updates">Translate interface update</a> page for more information.', array('!updates' => url('admin/config/regional/translate/update'))),
+        );
+      }
+    }
+  }
+  if ($phase == 'update') {
+    // Make sure the 'translations' stream wrapper class gets registered.
+    // This is needed when upgrading to 7.x-2.x.
+    if (!class_exists('TranslationsStreamWrapper')) {
+      registry_rebuild();
+    }
+  }
+  return $requirements;
+}
+
+/**
+ * Rename filepath to uri in {l10n_update_file} table.
+ */
+function l10n_update_update_7001() {
+  // Only do this update if the field exists from D6.
+  // If it doesn't, we've got a pure D7 site that doesn't need it.
+  if (db_field_exists('l10n_update_file', 'filepath')) {
+    db_change_field('l10n_update_file', 'filepath', 'uri', array(
+      'description' => 'File system path for importing the file.',
+      'type' => 'varchar',
+      'length' => 255,
+      'not null' => TRUE,
+      'default' => '',
+    ));
+  }
+}
+
+/**
+ * Delete 'last_updated' field from {l10n_update_file} table.
+ */
+function l10n_update_update_7002() {
+  db_drop_field('l10n_update_file', 'last_updated');
+}
+
+/**
+ * Delete 'import_date' field from {l10n_update_file} table.
+ */
+function l10n_update_update_7003() {
+  db_drop_field('l10n_update_file', 'import_date');
+}
+
+/**
+ * Create {cache_l10n_update} table.
+ */
+function l10n_update_update_7004() {
+  // Code removed. Table {cache_l10n_update} is no longer used.
+}
+
+/**
+ * Migration to 7.x-2.x branch.
+ */
+function l10n_update_update_7200() {
+  // Make sure the 'translations' stream wrapper class gets registered.
+  if (!class_exists('TranslationsStreamWrapper')) {
+    registry_rebuild();
+  }
+
+  if (!variable_get('l10n_update_download_store', '')) {
+    variable_set('l10n_update_download_store', 'sites/all/translations');
+  }
+  // Create the translation directory. We try different alternative paths as the
+  // default may not always be writable.
+  $directories = array(
+    variable_get('l10n_update_download_store', L10N_UPDATE_DEFAULT_TRANSLATION_PATH),
+    variable_get('file_public_path', conf_path() . '/files') . '/translations',
+    'sites/default/files/translations',
+  );
+  foreach ($directories as $directory) {
+    if (file_prepare_directory($directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS)) {
+      variable_set('l10n_update_download_store', $directory);
+      return;
+    }
+  }
+  watchdog('l10n_update', 'The directory %directory does not exist or is not writable.', array('%directory' => $directories[0]), WATCHDOG_ERROR);
+  drupal_set_message(t('The directory %directory does not exist or is not writable.', array('%directory' => $directories[0])), 'error');
+
+  // Translation source 'Remote server only' is no longer supported. Use 'Remote
+  // and local' instead.
+  $mode = variable_get('l10n_update_check_mode', 3); // L10N_UPDATE_USE_SOURCE_REMOTE_AND_LOCAL
+  if ($mode == 1) {
+    variable_set('l10n_update_check_mode', 3); // L10N_UPDATE_USE_SOURCE_REMOTE_AND_LOCAL
+  }
+
+  // Daily cron updates are no longer supported. Use weekly instead.
+  $frequency = variable_get('l10n_update_check_frequency', '0');
+  if ($frequency == '1') {
+    variable_set('l10n_update_check_frequency', '7');
+  }
+
+  // Clean up deprecated variables.
+  variable_del('l10n_update_default_server');
+  variable_del('l10n_update_default_server_url');
+  variable_del('l10n_update_rebuild_projects');
+}
+
+/**
+ * Sets the default translation files directory.
+ */
+function l10n_update_update_7201() {
+  if (!variable_get('l10n_update_download_store', '')) {
+   variable_set('l10n_update_download_store', 'sites/all/translations');
+  }
+}
+
+/**
+ * Removes table {cache_l10n_update}.
+ */
+function l10n_update_update_7202() {
+  if (db_table_exists('cache_l10n_update')) {
+    db_drop_table('cache_l10n_update');
+  }
+}
+
+/**
+ * Removes the field 'l10n_server' from table {cache_l10n_update}.
+ */
+function l10n_update_update_7203() {
+  if (db_field_exists('l10n_update_project', 'l10n_server')) {
+    db_drop_field('l10n_update_project', 'l10n_server');
+  }
+}

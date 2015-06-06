@@ -1,0 +1,28 @@
+<?php
+
+/**
+ * @file
+ * Simulates a custom module with a local po file.
+ */
+
+/**
+ * Implements hook_system_info_alter().
+ *
+ * By default this modules is hidden but once enabled it behaves like a normal
+ * (not hidden) module. This hook implementation changes the .info.yml data by
+ * setting the hidden status to FALSE.
+ */
+function l10n_update_test_translate_system_info_alter(&$info, $file, $type) {
+  if ($file->name == 'l10n_update_test_translate') {
+    // Don't hide the module.
+    if (isset($info['hidden'])) {
+      $info['hidden'] = FALSE;
+    }
+
+    // Correct the path to the translation file. At a test-environment, the
+    // module may be place in a different path.
+    $basename = basename($info['l10n path']);
+    $path = drupal_get_path('module', 'l10n_update') . '/tests/modules/l10n_update_test_translate/translations/';
+    $info['l10n path'] = $path . $basename;
+  }
+}

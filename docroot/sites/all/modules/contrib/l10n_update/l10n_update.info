@@ -1,0 +1,39 @@
+name = Localization update
+description = Provides automatic downloads and updates for translations.
+dependencies[] = locale
+core = 7.x
+package = Multilingual
+configure = admin/config/regional/language/update
+
+files[] = includes/gettext/PoHeader.php
+files[] = includes/gettext/PoItem.php
+files[] = includes/gettext/PoMemoryWriter.php
+files[] = includes/gettext/PoMetadataInterface.php
+files[] = includes/gettext/PoReaderInterface.php
+files[] = includes/gettext/PoStreamInterface.php
+files[] = includes/gettext/PoStreamReader.php
+files[] = includes/gettext/PoStreamWriter.php
+files[] = includes/gettext/PoWriterInterface.php
+
+files[] = includes/locale/Gettext.php
+files[] = includes/locale/PoDatabaseReader.php
+files[] = includes/locale/PoDatabaseWriter.php
+files[] = includes/locale/SourceString.php
+files[] = includes/locale/StringBase.php
+files[] = includes/locale/StringDatabaseStorage.php
+files[] = includes/locale/StringInterface.php
+files[] = includes/locale/StringStorageException.php
+files[] = includes/locale/StringStorageInterface.php
+files[] = includes/locale/TranslationString.php
+files[] = includes/locale/TranslationsStreamWrapper.php
+
+files[] = tests/L10nUpdateCronTest.test
+files[] = tests/L10nUpdateInterfaceTest.test
+files[] = tests/L10nUpdateTest.test
+files[] = tests/L10nUpdateTestBase.test
+; Information added by Drupal.org packaging script on 2015-03-10
+version = "7.x-2.0+9-dev"
+core = "7.x"
+project = "l10n_update"
+datestamp = "1426020783"
+

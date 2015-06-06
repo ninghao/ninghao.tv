@@ -1,0 +1,143 @@
+<?php
+
+/**
+ * @file
+ * Simulate a custom module with a local po file.
+ */
+
+/**
+ * Implements hook_system_info_alter().
+ *
+ * Make the test scripts to be believe this is not a hidden test module, but
+ * a regular custom module.
+ */
+function l10n_update_test_system_info_alter(&$info, $file, $type) {
+  // Only modify the system info if required.
+  // By default the l10n_update_test modules are hidden and have a project specified.
+  // To test the module detection process by l10n_update_project_list() the
+  // test modules should mimic a custom module. I.e. be non-hidden.
+  if (variable_get('l10n_update_test_system_info_alter', FALSE)) {
+    if ($file->name == 'l10n_update_test' || $file->name == 'l10n_update_test_translate') {
+      // Don't hide the module.
+      $info['hidden'] = FALSE;
+    }
+  }
+}
+
+/**
+ * Implements hook_l10n_update_projects_alter().
+ *
+ * The translation status process by default checks the status of the installed
+ * projects. This function replaces the data of the installed modules by a
+ * predefined set of modules with fixed file names and release versions. Project
+ * names, versions, timestamps etc must be fixed because they must match the
+ * files created by the test script.
+ *
+ * The "l10n_update_test_projects_alter" variable must be set by the test script
+ * in order for this hook to take effect.
+ */
+function l10n_update_test_l10n_update_projects_alter(&$projects) {
+  if (variable_get('l10n_update_test_projects_alter', FALSE)) {
+
+    // Instead of the default ftp.drupal.org we use the file system of the test
+    // instance to simulate a remote file location.
+    $wrapper = file_stream_wrapper_get_instance_by_uri('public://');
+    $remote_url = $wrapper->getExternalUrl() . '/remote/';
+
+    // Completely replace the project data with a set of test projects.
+    $projects = array (
+      'contrib_module_one' => array (
+        'name' => 'contrib_module_one',
+        'info' => array (
+          'name' => 'Contributed module one',
+          'l10n path' => $remote_url . '%core/%project/%project-%release.%language._po',
+          'package' => 'Other',
+          'version' => '7.x-1.1',
+          'project' => 'contrib_module_one',
+          'datestamp' => '1344471537',
+          '_info_file_ctime' => 1348767306,
+        ),
+        'datestamp' => '1344471537',
+        'includes' => array (
+          'contrib_module_one' => 'Contributed module one',
+        ),
+        'project_type' => 'module',
+        'project_status' => TRUE,
+      ),
+      'contrib_module_two' => array (
+        'name' => 'contrib_module_two',
+        'info' => array (
+          'name' => 'Contributed module two',
+          'l10n path' => $remote_url . '%core/%project/%project-%release.%language._po',
+          'package' => 'Other',
+          'version' => '7.x-2.0-beta4',
+          'project' => 'contrib_module_two',
+          'datestamp' => '1344471537',
+          '_info_file_ctime' => 1348767306,
+        ),
+        'datestamp' => '1344471537',
+        'includes' => array (
+          'contrib_module_two' => 'Contributed module two',
+        ),
+        'project_type' => 'module',
+        'project_status' => TRUE,
+      ),
+      'contrib_module_three' => array (
+        'name' => 'contrib_module_three',
+        'info' => array (
+          'name' => 'Contributed module three',
+          'l10n path' => $remote_url . '%core/%project/%project-%release.%language._po',
+          'package' => 'Other',
+          'version' => '7.x-1.0',
+          'project' => 'contrib_module_three',
+          'datestamp' => '1344471537',
+          '_info_file_ctime' => 1348767306,
+        ),
+        'datestamp' => '1344471537',
+        'includes' => array (
+          'contrib_module_three' => 'Contributed module three',
+        ),
+        'project_type' => 'module',
+        'project_status' => TRUE,
+      ),
+      'l10n_update_test' => array (
+        'name' => 'l10n_update_test',
+        'info' => array (
+          'name' => 'Locale test',
+          'interface translation project' => 'l10n_update_test',
+          'l10n path' => 'sites/all/modules/l10n_update/tests/test.%language.po',
+          'package' => 'Other',
+          'version' => NULL,
+          'project' => 'l10n_update_test',
+          '_info_file_ctime' => 1348767306,
+          'datestamp' => 0,
+        ),
+        'datestamp' => 0,
+        'includes' => array (
+          'l10n_update_test' => 'Locale test',
+        ),
+        'project_type' => 'module',
+        'project_status' => TRUE,
+      ),
+      'custom_module_one' => array (
+        'name' => 'custom_module_one',
+        'info' => array (
+          'name' => 'Custom module one',
+          'interface translation project' => 'custom_module_one',
+          'l10n path' => 'translations://custom_module_one.%language.po',
+          'package' => 'Other',
+          'version' => NULL,
+          'project' => 'custom_module_one',
+          '_info_file_ctime' => 1348767306,
+          'datestamp' => 0,
+        ),
+        'datestamp' => 0,
+        'includes' => array (
+          'custom_module_one' => 'Custom module one',
+        ),
+        'project_type' => 'module',
+        'project_status' => TRUE,
+      ),
+    );
+  }
+}

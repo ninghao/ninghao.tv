@@ -1,0 +1,15 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the l10n_update_test module.
+ */
+
+/**
+ * Implements hook_uninstall().
+ */
+function l10n_update_test_uninstall() {
+  // Clear variables.
+  variable_del('l10n_update_test_system_info_alter');
+  variable_del('l10n_update_test_projects_alter');
+}
