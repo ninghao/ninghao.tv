@@ -1,0 +1,288 @@
+/* Style checkbox and radio buttons in Chrome + Safari + Opera */
+@supports (-webkit-appearance:none) {
+  .style-checkboxes input[type=checkbox],
+  .style-checkboxes input[type=radio] {
+    -webkit-appearance:none;
+    display: inline-block;
+    position: relative;
+    top: 4px;
+    margin-right: 0.25em;
+    padding: 0;
+    background: #fff;
+    border: 1px solid #B5B5B5;
+    width: 16px;
+    height: 16px;
+    -webkit-transition: all 0.5s ease;
+    -o-transition: all 0.5s ease;
+    transition: background 0.5s ease;
+    outline: none;
+  }
+
+  .style-checkboxes input[type=radio] {
+    border-radius: 50%;
+  }
+
+  .style-checkboxes input[type=checkbox]:hover,
+  .style-checkboxes input[type=checkbox]:focus,
+  .style-checkboxes input[type=radio]:hover,
+  .style-checkboxes input[type=radio]:focus {
+    border-color: #0074BD;
+    cursor: pointer;
+  }
+
+  .style-checkboxes input[type=checkbox]:checked,
+  .style-checkboxes input[type=checkbox]:disabled:checked,
+  .style-checkboxes input[type=radio]:checked,
+  .style-checkboxes input[type=radio]:disabled:checked{
+    background: #0074BD;
+    box-shadow: inset 0px 0px 0px 4px #fff;
+  }
+
+  .style-checkboxes input[type=checkbox]:disabled,
+  .style-checkboxes input[type=radio]:disabled {
+    opacity: .5;
+    background: #E2E2E2;
+  }
+
+  .style-checkboxes input[type=checkbox]:disabled:hover,
+  .style-checkboxes input[type=radio]:disabled:hover {
+    border-color: #B5B5B5;
+    cursor: default;
+    /*cursor: not-allowed;*/
+  }
+
+}
+
+/* Buttons */
+
+/* Gray Button */
+input.form-submit,
+a.button,
+div.exposed-filters input#edit-submit {
+  cursor: pointer;
+  background: #e3e3e3;
+  border: none;
+  border-radius: 0;
+  padding: 6px 10px;
+  margin-bottom: 1em;
+  margin-right: 1em;/* LTR */
+  color: #555;
+  text-align: center;
+  font-weight: normal;
+  font-size: 1.077em;
+  font-family: "Lucida Grande",Verdana,sans-serif;
+}
+
+input.form-submit:hover,
+a.button:hover,
+div.exposed-filters input#edit-submit:hover {
+  background: #0074BD;
+  color: #fff;
+}
+
+input.form-submit:active,
+a.button:active,
+div.exposed-filters input#edit-submit:active {
+  box-shadow: 0 2px 2px rgba(0,0,0,0.3) inset;
+}
+
+/* Green Button */
+input[type="submit"][id^="edit-submit"],
+input#edit-actions-submit,
+input[id^="save-continue"],
+input[type="submit"][id^="edit-save"],
+input#edit-save,
+input#edit-submit,
+input#edit-actions-save,
+#media-browser-page a.button-yes {
+  cursor: pointer;
+  border-radius: 0;
+  border: none;
+  padding: 6px 10px;
+  margin-bottom: 1em;
+  margin-right: 1em;/* LTR */
+  color: #fff;
+  text-align: center;
+  font-weight: normal;
+  font-size: 1.077em;
+  font-family: "Lucida Grande",Verdana,sans-serif;
+  background: #4d8f46;
+}
+
+input[type="submit"][id^="edit-submit"]:hover,
+input#edit-actions-submit:hover,
+input[id^="save-continue"]:hover,
+input[type="submit"][id^="edit-save"]:hover,
+input#edit-save:hover,
+input#edit-submit:hover,
+input#edit-actions-save:hover,
+#media-browser-page a.button-yes:hover {
+  background: #0a6700;
+  border-radius: 0;
+  border: none;
+  color: #fff;
+}
+
+input#edit-submit:active,
+input#edit-actions-submit:active,
+input[id^="save-continue"]:active,
+input[type="submit"][id^="edit-save"]:active,
+input#edit-save:active,
+input#edit-submit:active,
+input#edit-actions-save:active {
+  box-shadow: 0 2px 2px rgba(0,0,0,0.75) inset;
+  background: #333;
+  border-radius: 0;
+  border: none;
+  color: #fff;
+}
+
+/* Red Button */
+input#edit-delete,
+input#remove-button,
+input#edit-remove,
+input#edit-clear,
+a.button.remove,
+input[id*="remove-button"],
+.page-admin-modules-uninstall input#edit-submit {
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 0;
+  border: none;
+  margin-bottom: 1em;
+  margin-right: 1em;/* LTR */
+  color: #fff;
+  text-align: center;
+  font-weight: normal;
+  font-size: 1.077em;
+  font-family: "Lucida Grande",Verdana,sans-serif;
+  background: #b73939;
+}
+
+input#edit-delete:hover,
+input#remove-button:hover,
+input#edit-remove:hover,
+input#edit-clear:hover,
+a.button.remove:hover,
+input[id*="remove-button"]:hover,
+body.page-admin-modules-uninstall input#edit-submit:hover {
+  background: #990000;
+  border-radius: 0;
+  border: none;
+  color: #fff;
+}
+
+input#edit-delete:active,
+input#remove-button:active,
+input#edit-remove:active,
+input#edit-clear:active,
+input[id*="remove-button"]:active,
+body.page-admin-modules-uninstall input#edit-submit:active {
+  box-shadow: 0 2px 2px rgba(0,0,0,0.75) inset;
+  background: #333;
+  border-radius: 0;
+  border: none;
+  color: #fff;
+}
+
+/* Blue Button */
+input#edit-preview,
+input#edit-next,
+input#preview-submit,
+input[type="submit"][id^="edit-return"] {
+  cursor: pointer;
+  border-radius: 0;
+  border: none;
+  padding: 6px 10px;
+  margin-bottom: 1em;
+  margin-right: 1em;/* LTR */
+  color: #fff;
+  text-align: center;
+  font-weight: normal;
+  font-size: 1.077em;
+  font-family: "Lucida Grande",Verdana,sans-serif;
+  background: #0074BD;
+}
+
+input#edit-preview:hover,
+input#edit-next:hover,
+input#preview-submit:hover,
+input[type="submit"][id^="edit-return"]:hover {
+  background: #004c99;
+  border-radius: 0;
+  border: none;
+  color: #fff;
+}
+
+input#edit-preview:active,
+input#edit-next:active,
+input#preview-submit:active,
+input[type="submit"][id^="edit-return"]:active {
+  box-shadow: 0 2px 2px rgba(0,0,0,0.75) inset;
+  background: #333;
+  border-radius: 0;
+  border: none;
+  color: #fff;
+}
+
+/* Orange Button */
+#edit-cancel,
+#edit-actions-cancel,
+input#edit-buttons-revert,
+#media-browser-page a.button-no {
+  cursor: pointer;
+  border-radius: 0;
+  border: none;
+  padding: 6px 10px;
+  margin-bottom: 1em;
+  margin-right: 1em;/* LTR */
+  color: #fff;
+  text-align: center;
+  font-weight: normal;
+  font-size: 1.077em;
+  font-family: "Lucida Grande",Verdana,sans-serif;
+  background: #f69231;
+}
+
+a#edit-cancel,a#edit-actions-cancel {
+  padding: 6px 10px;
+  text-decoration: none;
+  border-radius: 0;
+  border: none;
+}
+
+#edit-cancel:hover,
+#edit-actions-cancel:hover,
+input#edit-buttons-revert:hover,
+#media-browser-page a.button-no:hover {
+  background: #ef6114;
+  text-decoration: none;
+  border-radius: 0;
+  border: none;
+  color: #fff;
+}
+
+#edit-cancel:active,
+#edit-actions-cancel:active,
+input#edit-buttons-revert:active {
+  box-shadow: 0 2px 2px rgba(0,0,0,0.75) inset;
+  background: #333;
+  border-radius: 0;
+  border: none;
+  color: #fff;
+}
+
+/* END Buttons */
+
+strong {
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-weight: bold !important;
+}
+
+/* Omega Fieldset fix */
+body.page-admin-appearance-settings-omega fieldset {
+  border: solid 1px #ddd !important;
+  border-top: 3px solid #0074BD !important;
+  padding: 12px !important;
+  margin: 18px 0 !important;
+}
