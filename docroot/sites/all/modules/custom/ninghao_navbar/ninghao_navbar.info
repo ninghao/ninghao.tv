@@ -1,0 +1,5 @@
+name            = Ninghao Navbar
+description     = Custom navbar by ninghao.net
+core            = 7.x
+dependencies[]  = navbar
+package         = Administration

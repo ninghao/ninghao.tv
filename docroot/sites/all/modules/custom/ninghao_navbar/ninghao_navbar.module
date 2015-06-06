@@ -1,0 +1,16 @@
+<?php
+
+/**
+ * Implements hook_page_build().
+ */
+function ninghao_navbar_page_build(&$page) {
+  if (user_access('access navbar')) {
+    $module_path = drupal_get_path('module', 'ninghao_navbar');
+    drupal_add_css($module_path . '/css/ninghao.navbar.css',
+      [
+        'group'     => CSS_THEME,
+        'media'     => 'all',
+        'weight'    => 1001
+      ]);
+  }
+}

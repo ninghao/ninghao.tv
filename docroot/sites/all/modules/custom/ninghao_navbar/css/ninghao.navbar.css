@@ -1,0 +1,37 @@
+#navbar-administration .navbar-tray-vertical {
+  background-color: #F5F5F5;
+  border-right: 1px solid #e1e1e1;
+  box-shadow: none;
+}
+#navbar-administration .navbar-icon:before {
+  opacity: 0.5;
+  width: 15px;
+}
+#navbar-administration .navbar-bar {
+  box-shadow: none;
+}
+#navbar-administration .navbar-tab a:focus {
+  border-color: #000;
+}
+#navbar-administration .navbar-tray-horizontal {
+  border-bottom: 1px solid #e1e1e1;
+  box-shadow: none;
+}
+#navbar-administration .navbar-tray-horizontal a:focus, #navbar-administration .navbar-box a:focus {
+  border-color: #EBEBEB;
+}
+#navbar-administration .navbar-tray a:hover, #navbar-administration .navbar-tray a:active, #navbar-administration .navbar-tray a:focus, #navbar-administration .navbar-tray a.navbar-active {
+  text-decoration: none;
+}
+#navbar-administration .navbar-tray-vertical .navbar-menu li + li {
+  border-top: 1px solid #F8F8F8;
+}
+#navbar-administration .navbar-tray-vertical {
+  background-color: #fff;
+}
+#navbar-administration .navbar-toggle-orientation {
+  background: #fff;
+}
+#navbar-administration .navbar-menu-administration .navbar-icon:before {
+  opacity: 0.2;
+}
