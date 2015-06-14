@@ -1,0 +1,201 @@
+<?php
+/**
+ * @file
+ * Install, update and uninstall functions for the getid3 module.
+ */
+
+/**
+ * Implements hook_requirements().
+ */
+function getid3_requirements($phase) {
+  $t = get_t();
+  $requirements = array();
+
+  if ($phase == 'runtime') {
+    // Test getID3 version
+    $requirements['getid3']['title'] = $t('getID3()');
+
+    if (getid3_load(FALSE)) {
+      $requirements['getid3']['value'] = check_plain(getid3_get_version());
+
+      // Check if demos directory exists.
+      $getid3_demos_path = getid3_get_path() . '/../demos';
+      if (file_exists($getid3_demos_path)) {
+        $requirements['getid3']['description'] = $t("Your getID3 library is insecure! The demos distributed with getID3 contains code which creates a huge security hole. Remove the demos directory (%path) from beneath Drupal's directory.", array('%path' => realpath($getid3_demos_path)));
+        $requirements['getid3']['severity'] = REQUIREMENT_ERROR;
+      }
+    }
+    // getID3 library not found or wrong version.
+    else {
+      $requirements['getid3']['value'] = $t('Not found or wrong version');
+      $requirements['getid3']['description'] = $t('You must install <a href="@getid3">getID3()</a> to %getid3dir, or <a href="@getid3settings">configure its installation path</a>.', array('@getid3' => 'http://www.getid3.org', '%getid3dir' => 'sites/all/libraries/getid3', '@getid3settings' => url('admin/config/media/getid3')));
+      $requirements['getid3']['severity'] = REQUIREMENT_ERROR;
+    }
+  }
+
+  return $requirements;
+}
+
+/**
+ * Implements hook_enable().
+ */
+function getid3_enable() {
+  // Display a message if it fails to load getID3().
+  getid3_load();
+}
+
+/**
+ * Implements hook_install().
+ */
+function getid3_install() {
+  $status = array();
+   // Set module weight for the getID3 module.
+  $status[] = db_query("UPDATE {system} SET weight = -10 WHERE name = 'getid3'");
+
+  // If there is one FALSE value in the status array, there was an error.
+  if (array_search(FALSE, $status) !== FALSE) {
+    drupal_set_message(st('Setting the module weight of getID3 failed.'), 'error');
+  }
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function getid3_uninstall() {
+  db_query("DELETE FROM {variable} WHERE name LIKE 'getid3_%'");
+  cache_clear_all('variables', 'cache');
+}
+
+
+/**
+ * Implements hook_schema().
+ */
+function getid3_schema() {
+  $schema = array();
+  // The primary field/index.
+  $schema['getid3_meta'] = array(
+    'description' => 'The table for meta data about filefield files.',
+    'fields' => array(
+      'fid' => array(
+        'description' => 'The file id.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'width' => array(
+        'description' => 'Width of a video or image file in pixels.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+      ),
+      'height' => array(
+        'description' => 'Height of a video or image file in pixels.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+      ),
+      'duration' => array(
+        'description' => 'The duration of audio or video files, in seconds.',
+        'type' => 'float',
+        'size' => 'normal',
+        'not null' => FALSE,
+      ),
+      'audio_format' => array(
+        'description' => 'The audio format.',
+        'type' => 'varchar',
+        'length' => 10,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'audio_sample_rate' => array(
+        'description' => 'The sample rate of the audio.',
+        'type' => 'int',
+        'size' => 'medium',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'audio_channel_mode' => array(
+        'description' => 'The number of channels in the audio, by name (stereo, mono, or joint stereo).',
+        'type' => 'varchar',
+        'length' => 13,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'audio_bitrate' => array(
+        'description' => 'The audio bitrate.',
+        'type' => 'float',
+        'size' => 'medium',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'audio_bitrate_mode' => array(
+        'description' => 'The kind of audio bitrate, such as VBR. Usually empty.',
+        'type' => 'varchar',
+        'length' => 4,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'tags' => array(
+        'description' => 'ID3 tags such as artist, album, and genre.',
+        'type' => 'text',
+        'serialize' => TRUE,
+      ),
+    ),
+    'primary key' => array('fid'),
+  );
+
+  return $schema;
+}
+
+
+/**
+ * Create the getid3_meta table.
+ */
+function getid3_update_7101() {
+  // Lets get the schema.
+  $schema = getid3_schema();
+
+  // Create the table.
+  db_create_table('getid3_meta', $schema['getid3_meta']);
+}
+
+/**
+ * Add the meta data to files already created.
+ */
+function getid3_update_7102(&$sandbox) {
+  // Explicityly load the getid3 module.
+  drupal_load('module', 'getid3');
+
+  // Lets update 10 files at a time.
+  if (!isset($sandbox['progress'])) {
+    $sandbox['progress'] = 0;
+    $sandbox['current_fid'] = 0;
+    // We only select files that are not in the getid3_meta table.
+    $sandbox['max'] = db_query('SELECT COUNT(fid) FROM {file_managed} f where f.fid not in (select fid from {getid3_meta})')->fetchField();
+  }
+
+  $query = db_select('file_managed', 'f')
+    ->fields('f', array('fid'))
+    ->condition('fid', $sandbox['current_fid'], '>')
+    ->range(0, 10)
+    ->orderBy('fid', 'ASC');
+  // Make sure to only select files not in the getid3_meta table.
+  $query->where('f.fid not in (select fid from {getid3_meta})');
+  $files = $query->execute();
+
+  foreach ($files as $file) {
+    // getid3_analyze_file is expecting a file object
+    // so we'll load i.
+    $file = file_load($file->fid);
+    getid3_analyze_file($file);
+    $record = array_merge($file->getid3, array('fid' => $file->fid));
+    // Lets manually add it to the table.
+    drupal_write_record('getid3_meta', $record);
+    $sandbox['progress']++;
+    $sandbox['current_fid'] = $file->fid;
+  }
+
+  $sandbox['#finished'] = empty($sandbox['max']) ? 1 : ($sandbox['progress'] / $sandbox['max']);
+
+  return t('All the meta data has been added for all the files.');
+}

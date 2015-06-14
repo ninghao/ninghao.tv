@@ -1,0 +1,20 @@
+name = "getID3()"
+description = "getID3() extracts useful information from multimedia file formats."
+core = 7.x
+configure = admin/config/media/getid3
+files[] = getid3.admin.inc
+files[] = getid3.install
+files[] = getid3.module
+files[] = getid3.token.inc
+files[] = includes/getid3.views.inc
+files[] = includes/getid3_handler_field_bitrate.inc
+files[] = includes/getid3_handler_field_duration.inc
+files[] = includes/getid3_handler_field_sample_rate.inc
+files[] = includes/getid3_handler_field_tags.inc
+
+; Information added by Drupal.org packaging script on 2014-12-20
+version = "7.x-1.0+10-dev"
+core = "7.x"
+project = "getid3"
+datestamp = "1419100683"
+

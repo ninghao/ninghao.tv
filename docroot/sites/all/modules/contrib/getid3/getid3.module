@@ -1,0 +1,280 @@
+<?php
+
+define('GETID3_RECOMMEND_VERSION', '1.8.2');
+
+/**
+ * Implements hook_help().
+ */
+function getid3_help($section, $arg) {
+  switch ($section) {
+    case 'admin/config/media/getid3':
+      $help = '<p>' . t("To use this module you'll need to <a href='!download-link'>download the library</a> from the <a href='!info-link'>getID3 website</a> and extract the contents into the  module's getid3 directory. Currently, the recommended version of the getID3 library is %recommended-version.",
+        array('!download-link' => url('http://prdownloads.sourceforge.net/getid3'), '!info-link' => url('http://getid3.org/'), '%recommended-version' => GETID3_RECOMMEND_VERSION)) . '</p>';
+      return $help;
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function getid3_menu() {
+  $items['admin/config/media/getid3'] = array(
+    'title' => 'getID3()',
+    'description' => 'Configure settings associated with getID3().',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('getid3_admin_settings_form', NULL),
+    'access arguments' => array('administer site configuration'),
+    'file' => 'getid3.admin.inc',
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function getid3_theme($existing, $type, $theme, $path) {
+  return array(
+    'getid3_duration' => array(
+      'variables' => array('duration' => NULL),
+    ),
+    'getid3_sample_rate' => array(
+      'variables' => array('sample_rate' => NULL),
+    ),
+    'getid3_bitrate' => array(
+      'variables' => array('bitrate' => NULL),
+    ),
+  );
+}
+
+/**
+ * Load the getID3 library.
+ *
+ * @return
+ *   Boolean indicating if the library was successfully loaded.
+ */
+function getid3_load($display_warning = TRUE) {
+  $getid3_path = getid3_get_path();
+
+  if (file_exists($getid3_path . '/getid3.php') && file_exists($getid3_path . '/write.php')) {
+    // A little workaround for getID3 on Windows.
+    if (!defined('GETID3_HELPERAPPSDIR')) {
+      define('GETID3_HELPERAPPSDIR', realpath($getid3_path . '/../helperapps') . '/');
+    }
+    include_once($getid3_path . '/getid3.php');
+
+    // Initialize getID3 tag-writing module. NOTE: Their wanky dependency setup
+    // requires that this file must be included AFTER an instance of the getID3
+    // class has been instantiated.
+    $getid3 = new getID3;
+    require_once($getid3_path . '/write.php');
+
+    return method_exists($getid3, 'version') || defined('GETID3_VERSION');
+  }
+  elseif ($display_warning) {
+    drupal_set_message(t("The getid3() module cannot find the getID3 library used to read and write ID3 tags. The site administrator will need to verify that it is installed and then update the <a href='!admin-settings-audio-getid3'>settings</a>.", array('!admin-settings-audio-getid3' => url('admin/config/media/getid3'))), 'error', FALSE);
+  }
+  return FALSE;
+}
+
+/**
+ * Create and initialize an instance of getID3 class.
+ */
+function getid3_instance() {
+  $id3 = NULL;
+  if (getid3_load()) {
+    $id3 = new getID3();
+    // MD5 is a big performance hit. Disable it by default.
+    $id3->option_md5_data = FALSE;
+    $id3->option_md5_data_source = FALSE;
+    $id3->encoding = 'UTF-8';
+  }
+  return $id3;
+}
+
+/**
+ * Analyze file and return its media information.
+ *
+ * @param $filepath
+ *   A string specifying a file path.
+ * @return
+ *   An array with the information returned by getID3.
+ */
+function getid3_analyze($filepath) {
+  $info = array();
+  if ($id3 = getid3_instance()) {
+    $info = $id3->analyze($filepath);
+    unset($id3);
+  }
+  return $info;
+}
+
+/**
+ * Analyze a file object and popupate its getid3 property.
+ */
+function getid3_analyze_file($file) {
+  $info = getid3_analyze(drupal_realpath($file->uri));
+
+  $file->getid3 = array(
+    'width' => 0,
+    'height' => 0,
+    'duration' => 0,
+    'audio_format' => '',
+    'audio_sample_rate' => 0,
+    'audio_channel_mode' => '',
+    'audio_bitrate' => NULL,
+    'audio_bitrate_mode' => NULL,
+  );
+
+  if (isset($info['video']['resolution_x'])) {
+    $file->getid3['width'] = (int) $info['video']['resolution_x'];
+    $file->getid3['height'] = (int) $info['video']['resolution_y'];
+  }
+  else if (isset($info['video']['streams'])) {
+    foreach ($info['video']['streams'] as $stream) {
+      $file->getid3['width'] = max($file->getid3['width'], (int) $stream['resolution_x']);
+      $file->getid3['height'] = max($file->getid3['height'], (int) $stream['resolution_y']);
+    }
+  }
+
+  if (isset($info['playtime_seconds'])) {
+    $file->getid3['duration'] = (int) $info['playtime_seconds'];
+  }
+
+  if (isset($info['audio'])) {
+    $file->getid3['audio_format'] = $info['audio']['dataformat']; //e.g. mp3
+    $file->getid3['audio_sample_rate'] = $info['audio']['sample_rate']; //e.g. 44100
+    $file->getid3['audio_channel_mode'] = $info['audio']['channelmode']; // e.g. mono
+    $file->getid3['audio_bitrate'] = isset($info['audio']['bitrate']) ? $info['audio']['bitrate'] : NULL; //e.g. 64000
+    $file->getid3['audio_bitrate_mode'] = isset($info['audio']['bitrate_mode']) ? $info['audio']['bitrate_mode'] : NULL; //e.g. cbr
+  }
+
+  // @TODO: Kill off the audio module by allowing users to edit id3 tags on
+  // files. Explore a sub-module that allows tags to be mapped to CCK fields and
+  // allows reading and writing of the tags.
+
+  // Add in arbitrary ID3 tags.
+  if (isset($info['tags_html'])) {
+    // We use tags_html instead of tags because it is the most reliable data
+    // source for pulling in non-UTF-8 characters according to getID3 docs.
+    foreach ($info['tags_html'] as $type => $values) {
+      // Typically $type may be IDv2 (for MP3s) or quicktime (for AAC).
+      foreach ($values as $key => $value) {
+        $value = isset($value[0]) ? (string) $value[0] : (string) $value;
+        if (!empty($value) && $key != 'coverart') {
+          $file->data['tags'][$key] = html_entity_decode($value, ENT_QUOTES, 'UTF-8');
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Returns the path where getID3() is installed.
+ */
+function getid3_get_path() {
+  return variable_get('getid3_path', 'sites/all/libraries/getid3/getid3');
+}
+
+/**
+ * Implements hook_file_load().
+ */
+function getid3_file_load($files) {
+  // Add the upload specific data into the file object.
+  $result = db_query('SELECT * FROM {getid3_meta} u WHERE u.fid IN (:fids)', array(':fids' => array_keys($files)))->fetchAll(PDO::FETCH_ASSOC);
+  foreach ($result as $record) {
+    $files[$record['fid']]->getid3 = $record;
+  }
+}
+
+/**
+ * Implements hook_file_delete().
+ */
+function getid3_file_delete($file) {
+  db_delete('getid3_meta')->condition('fid', $file->fid)->execute();
+}
+
+/**
+ * Implements hook_file_insert().
+ */
+function getid3_file_insert($file) {
+  if (!empty($file->fid)) {
+    getid3_analyze_file($file);
+    $record = array_merge($file->getid3, array('fid' => $file->fid));
+    drupal_write_record('getid3_meta', $record);
+  }
+}
+
+/**
+ * Implements hook_file_update().
+ */
+function getid3_file_update($file) {
+  // Since we can't be sure a record will exist to update, rather than check,
+  // just delete the existing row and recreate it.
+  getid3_file_delete($file);
+  getid3_file_insert($file);
+}
+
+/**
+ * Returns the version number of getID3() that is installed.
+ */
+function getid3_get_version() {
+  if (getid3_load(FALSE)) {
+    $getid3 = new getID3;
+    // 1.9 and newer has a version method.
+    if (method_exists($getid3, 'version')) {
+      return $getid3->version();
+    }
+    // Older versions defined a constant.
+    if (defined('GETID3_VERSION')) {
+      return GETID3_VERSION;
+    }
+  }
+  return NULL;
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function getid3_views_api() {
+  return array(
+    'api' => 3.0,
+    'path' => drupal_get_path('module', 'getid3') . '/includes',
+  );
+}
+
+/**
+ * Format a float duration into minutes:seconds.
+ *
+ * @param $variables
+ *   Array with 'duration' key.
+ */
+function theme_getid3_duration($variables) {
+  $duration = $variables['duration'];
+  $seconds = round((($duration / 60) - floor($duration / 60)) * 60);
+  $minutes = floor($duration / 60);
+  if ($seconds >= 60) {
+    $seconds -= 60;
+    $minutes++;
+  }
+  return ((int) $minutes) . ':' . str_pad($seconds, 2, 0, STR_PAD_LEFT);
+}
+
+/**
+ * Format an audio sample rate.
+ *
+ * @param $variables
+ *   Array with 'sample_rate' key.
+ */
+function theme_getid3_sample_rate($variables) {
+  return t('@sampleratekHz', array('@samplerate' => (int) ($variables['sample_rate'] / 1000)));
+}
+
+/**
+ * Format an audio bitrate.
+ *
+ * @param $variables
+ *   Array with 'bitrate' key.
+ */
+function theme_getid3_bitrate($variables) {
+  return t('@bitrateKbps', array('@bitrate' => (int) ($variables['bitrate'] / 1000)));
+}
