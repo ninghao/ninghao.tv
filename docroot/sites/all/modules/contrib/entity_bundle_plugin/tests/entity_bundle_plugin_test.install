@@ -1,0 +1,28 @@
+<?php
+/**
+ * @file
+ * Install file for EntityBundlePlugin test module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function entity_bundle_plugin_test_schema() {
+  $schema['entity_bundle_plugin_test'] = array(
+    'fields' => array(
+      'id' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+      ),
+      'type' => array(
+        'description' => 'The bundle of the entity.',
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('id'),
+  );
+
+  return $schema;
+}

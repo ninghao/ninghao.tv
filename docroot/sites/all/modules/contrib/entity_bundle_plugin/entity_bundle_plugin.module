@@ -1,0 +1,219 @@
+<?php
+/**
+ * @file
+ * EntityBundlePlugin module.
+ */
+
+/**
+ * Rebuild all fields for all entity types that use bundle plugins.
+ */
+function entity_bundle_plugin_rebuild_all($force = FALSE) {
+  if (!$force) {
+    static $registered = FALSE;
+    if (!$registered) {
+      drupal_register_shutdown_function('_entity_bundle_plugin_rebuild_all');
+      $registered = TRUE;
+    }
+  }
+  else {
+    _entity_bundle_plugin_rebuild_all();
+  }
+}
+
+/**
+ * Helper function: rebuild the fields for entity types using bundle plugins.
+ */
+function _entity_bundle_plugin_rebuild_all() {
+  foreach (entity_get_info() as $entity_type => $entity_info) {
+    if (!empty($entity_info['bundle plugin']['plugin type'])) {
+      entity_bundle_plugin_rebuild_fields($entity_type, $entity_info);
+    }
+  }
+}
+
+/**
+ * Rebuild the fields for a given entity type.
+ *
+ * Scan field declarations on all entities to make sure that all declarations of
+ * the same field are identical, and create fields and instance in case of
+ * success.
+ */
+function entity_bundle_plugin_rebuild_fields($entity_type, $entity_info) {
+  // Load the bundle plugins.
+  ctools_include('plugins');
+  $plugins = ctools_get_plugins($entity_info['module'], $entity_info['bundle plugin']['plugin type']);
+  $plugins = array_filter($plugins, function ($plugin) {
+    $r = new ReflectionClass($plugin['class']);
+    $ret = !$r->implementsInterface('EntityBundlePluginValidableInterface')
+      || call_user_func(array($plugin['class'], 'isValid'));
+    return $ret;
+  });
+  uasort($plugins, 'ctools_plugin_sort');
+
+  // Process the bundle plugins and extract the fields they define.
+  $fields = array();
+  foreach ($plugins as $plugin_name => $plugin_info) {
+    $class = ctools_plugin_load_class($entity_info['module'], $entity_info['bundle plugin']['plugin type'], $plugin_name, 'class');
+    // Cannot use instanceof: it needs a class instance, not a class name.
+    if (in_array('EntityBundlePluginProvideFieldsInterface', class_implements($class))) {
+      $fields[$plugin_name] = call_user_func(array($class, 'fields'));
+    }
+  }
+
+  // Check if the fields definitions are compatible and gather them.
+  $field_definitions = array();
+  foreach ($fields as $plugin_name => $plugin_fields) {
+    foreach ($plugin_fields as $field_name => $field) {
+      $field_definitions[$field_name][$plugin_name] = $field['field'];
+    }
+  }
+  unset($plugin_name, $plugin_fields);
+  foreach ($field_definitions as $field_name => $definitions) {
+    _entity_bundle_plugin_check_incompatible_fields($field_name, $definitions);
+  }
+  unset($field_name, $definitions);
+
+  // Now, create or update fields.
+  foreach ($field_definitions as $field_name => $plugin_fields) {
+    $field = reset($plugin_fields);
+    $field += array(
+      'field_name' => $field_name,
+      'locked' => TRUE,
+    );
+    if ($existing_field = field_info_field($field_name)) {
+      // Merge default values from the cached field definition with the
+      // definition that comes from EBP.
+      $field = _entity_bundle_plugin_array_merge_deep_array(array($existing_field, $field));
+
+      // Recursively cast to string for a sane comparison.
+      array_walk_recursive($existing_field, function (&$value) { $value = ($value !== FALSE) ? (string) $value : '0'; });
+      array_walk_recursive($field, function (&$value) { $value = ($value !== FALSE) ? (string) $value : '0'; });
+
+      if (serialize($existing_field) != serialize($field)) {
+        field_update_field($field);
+      }
+    }
+    else {
+      // The field does not exist, create it.
+      field_create_field($field);
+    }
+  }
+
+  // Finally, create or update instances.
+  foreach ($fields as $plugin_name => $plugin_fields) {
+    foreach ($plugin_fields as $field_name => $field) {
+      $instance = $field['instance'];
+      $instance += array(
+        'field_name' => $field_name,
+        'entity_type' => $entity_type,
+        'bundle' => $plugin_name,
+      );
+      if ($existing_instance = field_info_instance($instance['entity_type'], $instance['field_name'], $instance['bundle'])) {
+        // Merge default values from the cached instance definition with the
+        // definition that comes from EBP.
+        $instance = _entity_bundle_plugin_array_merge_deep_array(array($existing_instance, $instance));
+
+        // Recursively cast to string for a sane comparison.
+        array_walk_recursive($existing_instance, function (&$value) { $value = ($value !== FALSE) ? (string) $value : '0'; });
+        array_walk_recursive($instance, function (&$value) { $value = ($value !== FALSE) ? (string) $value : '0'; });
+
+        if (serialize($existing_instance) != serialize($instance)) {
+          field_update_instance($instance);
+        }
+      }
+      else {
+        field_create_instance($instance);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_flush_caches().
+ */
+function entity_bundle_plugin_flush_caches() {
+  _entity_bundle_plugin_rebuild_all();
+}
+
+/**
+ * Utility function: check that a set of fields are compatible with each other.
+ */
+function _entity_bundle_plugin_check_incompatible_fields($field_name, $field_definitions) {
+  if (count($field_definitions) > 1) {
+    $groups = array();
+    $group_values = array();
+    foreach ($field_definitions as $plugin_name => $field_plugin) {
+      $found_group = NULL;
+      foreach ($group_values as $group_id => $group_value) {
+        if ($field_plugin == $group_value) {
+          $found_group = $group_id;
+          break;
+        }
+      }
+      if (isset($found_group)) {
+        $groups[$found_group][] = $plugin_name;
+      }
+      else {
+        $groups[] = array($plugin_name);
+        $group_values[] = $field_plugin;
+      }
+    }
+    if (count($groups) > 1) {
+      $displayed_groups = array();
+      foreach ($groups as $group) {
+        $displayed_groups[] = '(' . implode(', ', $group) . ')';
+      }
+      throw new Exception(t('@field_name is incompatible between @groups', array('@field_name' => $field_name, '@groups' => implode(', ', $displayed_groups))));
+    }
+  }
+
+  return FALSE;
+}
+
+/**
+ * Merges multiple arrays, recursively, and returns the merged array.
+ *
+ * This function is pretty much a clone of drupal_array_merge_deep_array() and
+ * similar to PHP's array_merge_recursive() function, but it handles non-array
+ * values differently. When merging values that are not both arrays, the latter
+ * value replaces the former rather than merging with it, and numeric keys are
+ * also merged, NOT appended.
+ *
+ * Example:
+ * @code
+ * $array_1 = array('test' => array('X'), array(0 => 'A', 1 => 'B'));
+ * $array_2 = array('test' => array('Y'), array(0 => 'C', 1 => 'D'));
+ *
+ * // This results in array('test' => array('X', 'Y'), 0 => 'A', 1 => 'B', 2 => 'C', 3 => 'D').
+ * $incorrect = drupal_array_merge_deep_array(array($array_1, $array_2));
+ *
+ * // This results in array('test' => array('X', 'Y'), 0 => 'C', 1 => 'D').
+ * $correct = _entity_bundle_plugin_array_merge_deep_array(array($array_1, $array_2));
+ * @endcode
+ *
+ * @param array $arrays
+ *   Arrays to merge.
+ *
+ * @return array
+ *   The merged array.
+ *
+ * @see drupal_array_merge_deep_array()
+ */
+function _entity_bundle_plugin_array_merge_deep_array(array $arrays) {
+  $result = array();
+
+  foreach ($arrays as $array) {
+    foreach ($array as $key => $value) {
+      // Recurse when both values are arrays.
+      if (isset($result[$key]) && is_array($result[$key]) && is_array($value)) {
+        $result[$key] = _entity_bundle_plugin_array_merge_deep_array(array($result[$key], $value));
+      }
+      // Otherwise, use the latter value, overriding any previous value.
+      else {
+        $result[$key] = $value;
+      }
+    }
+  }
+
+  return $result;
+}

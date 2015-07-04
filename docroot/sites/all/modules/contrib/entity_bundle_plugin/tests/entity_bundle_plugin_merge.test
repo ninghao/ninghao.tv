@@ -1,0 +1,61 @@
+<?php
+
+/**
+ *
+ * @author marand
+ */
+class entity_bundle_plugin_merge extends DrupalUnitTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Deep merge',
+      'description' => 'Unit test for the EBP-specific array merge function.',
+      'group' => 'Entity Bundle Plugin',
+    );
+  }
+
+  public function setUp() {
+    parent::setUp();
+    require_once __DIR__ . '/../entity_bundle_plugin.module';
+  }
+
+  public function testMerge() {
+    $a = array(
+      'test_1' => array('X', 'Y'),
+      'test_2' => array(
+        0 => 'A',
+        1 => 'B',
+      ),
+    );
+    $b = array(
+      'test_1' => array('X'),
+      'test_2' => array(
+        0 => 'C',
+        1 => 'D',
+      ),
+    );
+
+    // Drupal core behavior.
+    $expected = array(
+      'test_1' => array('X', 'Y', 'X'),
+      'test_2' => array(
+        0 => 'A',
+        1 => 'B',
+        2 => 'C',
+        3 => 'D',
+      ),
+    );
+    $actual = drupal_array_merge_deep_array(array($a, $b));
+    $this->assertEqual($expected, $actual, 'drupal_array_merge_deep() creates new numeric keys');
+
+    $expected = array(
+      'test_1' => array('X', 'Y'),
+      'test_2' => array(
+        0 => 'C',
+        1 => 'D',
+      ),
+    );
+    $actual = _entity_bundle_plugin_array_merge_deep_array(array($a, $b));
+    $this->assertEqual($expected, $actual, 'EBP merge replaces non-array values on numeric keys.');
+  }
+}

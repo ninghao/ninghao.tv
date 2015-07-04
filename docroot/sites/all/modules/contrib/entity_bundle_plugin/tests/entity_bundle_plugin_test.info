@@ -1,0 +1,13 @@
+name = Entity Bundle Plugin Test
+description = "Test support and example module for Entity Bundle Plugin."
+package = Entity
+core = 7.x
+
+dependencies[] = entity_bundle_plugin
+
+; Information added by drupal.org packaging script on 2013-09-30
+version = "7.x-1.0-beta2+0-dev"
+core = "7.x"
+project = "entity_bundle_plugin"
+datestamp = "1380576947"
+

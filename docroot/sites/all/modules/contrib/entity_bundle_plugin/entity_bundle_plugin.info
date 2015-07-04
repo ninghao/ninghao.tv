@@ -1,0 +1,18 @@
+name = Entity Bundle Plugin
+description = "Provide supports for entity types which bundles are plugin classes."
+package = Entity
+core = 7.x
+php = 5.3
+
+dependencies[] = entity
+dependencies[] = ctools
+
+files[] = tests/entity_bundle_plugin_merge.test
+files[] = entity_bundle_plugin.controller.inc
+
+; Information added by drupal.org packaging script on 2013-09-30
+version = "7.x-1.0-beta2+0-dev"
+core = "7.x"
+project = "entity_bundle_plugin"
+datestamp = "1380576947"
+

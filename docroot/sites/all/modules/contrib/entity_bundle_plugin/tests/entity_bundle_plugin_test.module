@@ -1,0 +1,54 @@
+<?php
+/**
+ * @file
+ * EntityBundlePlugin test module.
+ */
+
+/**
+ * Implements hook_entity_info().
+ */
+function entity_bundle_plugin_test_entity_info() {
+  $entity_info['entity_bundle_plugin_test'] = array(
+    'label' => t('Entity Bundle Plugin'),
+    'module' => 'entity_bundle_plugin_test',
+
+    // Use the entity bundle controller and configure it.
+    'controller class' => 'EntityBundlePluginEntityController',
+    'bundle plugin' => array(
+      // The name of the plugin to use for bundles.
+      // @see entity_bundle_plugin_test_ctools_plugin_type()
+      'plugin type' => 'bundle',
+
+      // The name of the class to use when loading an invalid bundle.
+      'broken class' => 'EntityBundlePluginTestBroken',
+    ),
+
+    // Define the base table and columns.
+    'base table' => 'entity_bundle_plugin_test',
+    'entity keys' => array(
+      'id' => 'id',
+      'bundle' => 'type',
+    ),
+
+    'fieldable' => TRUE,
+  );
+
+  return $entity_info;
+}
+
+/**
+ * Implements hook_ctools_plugin_type().
+ */
+function entity_bundle_plugin_test_ctools_plugin_type() {
+  $plugins['bundle'] = array();
+  return $plugins;
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function entity_bundle_plugin_ctools_plugin_directory($module, $plugin) {
+  if ($module == 'bundle') {
+    return $plugin;
+  }
+}
