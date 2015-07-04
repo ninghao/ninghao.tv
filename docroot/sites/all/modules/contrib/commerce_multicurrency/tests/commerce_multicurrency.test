@@ -1,0 +1,126 @@
+<?php
+
+/**
+ * @file
+ * Tests for the commerce currency module.
+ */
+
+/**
+ * Tests for the commerce currency module.
+ */
+class CommerceMulticurrencyTestCase extends DrupalWebTestCase {
+
+  /**
+   * Defines the cookie name used to store the set currency.
+   * @var string
+   */
+  protected $cookieName = 'Drupal_visitor_commerce_currency';
+
+  /**
+   * Implementation of getInfo().
+   */
+  public static function getInfo() {
+    return array(
+      'name' => 'Commerce Multicurrency',
+      'description' => 'Test multicurrency features.',
+      'group' => 'Commerce Multicurrency',
+    );
+  }
+
+  /**
+   * Setup.
+   */
+  public function setUp() {
+    $modules = func_get_args();
+    $modules = isset($modules[0]) ? $modules[0] : $modules;
+    $modules[] = 'rules';
+    $modules[] = 'commerce';
+    $modules[] = 'commerce_ui';
+    $modules[] = 'commerce_price';
+    $modules[] = 'commerce_multicurrency';
+    parent::setUp($modules);
+
+    // Enable currencies.
+    variable_set('commerce_enabled_currencies', array(
+      commerce_default_currency() => commerce_default_currency(),
+      'CHF' => 'CHF',
+      'EUR' => 'EUR',
+    ));
+    // Ensure the static currencies cache is reset.
+    commerce_currencies(TRUE, TRUE);
+  }
+
+  /**
+   * Test that the currency retrieving works.
+   */
+  public function testGetCurrency() {
+    // Ensure environment is clean.
+    $currency_code = &drupal_static('commerce_multicurrency_get_user_currency_code', FALSE);
+    $currency_code = FALSE;
+    unset($_COOKIE[$this->cookieName]);
+
+    // Check fallback behaviour if no currency is explicitly set.
+    $this->assertEqual(commerce_default_currency(), commerce_multicurrency_get_user_currency_code(), 'Default: ' . commerce_default_currency() . ' returned.');
+
+    // Inject currency.
+    $currency_code = 'CHF';
+    $this->assertEqual($currency_code, commerce_multicurrency_get_user_currency_code(), 'Static cache: CHF returned.');
+
+    // Reset currency code, but set cookie.
+    $currency_code = FALSE;
+    $_COOKIE[$this->cookieName] = 'EUR';
+    $this->assertEqual('EUR', commerce_multicurrency_get_user_currency_code(), 'Cookie: EUR returned.');
+
+    // Check if the static cache works.
+    unset($_COOKIE[$this->cookieName]);
+    $this->assertEqual('EUR', commerce_multicurrency_get_user_currency_code(), 'Static Cache follow up: EUR returned.');
+
+    // Ensure only valid currencies are accepted from cookies.
+    $_COOKIE[$this->cookieName] = 'NOP';
+    $currency_code = FALSE;
+    $this->assertEqual(commerce_default_currency(), commerce_multicurrency_get_user_currency_code(), 'Invalid currency was not returned.');
+  }
+
+  /**
+   * Test that the currency switching works as expected.
+   */
+  public function testSetCurrency() {
+    // Reset currency to default.
+    $currency_code = &drupal_static('commerce_multicurrency_get_user_currency_code', FALSE);
+    $currency_code = commerce_default_currency();
+    // Ensure no cookie is set.
+    unset($_COOKIE[$this->cookieName]);
+
+    commerce_multicurrency_set_user_currency_code('CHF');
+    $this->assertEqual('CHF', commerce_multicurrency_get_user_currency_code(), 'Currency set to CHF.');
+    $this->assertEqual('CHF', $currency_code, 'Static cache reference contains CHF.');
+    // We can't check if cookie is set in unit tests.
+
+    // Ensure only valid currency can be set.
+    commerce_multicurrency_set_user_currency_code('NOP');
+    $this->assertEqual('CHF', commerce_multicurrency_get_user_currency_code(), 'Invalid currency was not set.');
+  }
+
+  /**
+   * Test that the currency switching works as expected.
+   */
+  public function testNotOverwrittingCurrency() {
+    // Reset currency to default.
+    $currency_code = &drupal_static('commerce_multicurrency_get_user_currency_code', FALSE);
+    $currency_code = commerce_default_currency();
+
+    // Set currency only if no cookie is set.
+    $_COOKIE[$this->cookieName] = $currency_code;
+    commerce_multicurrency_set_user_currency_code('CHF', FALSE);
+    $this->assertEqual(commerce_default_currency(), commerce_multicurrency_get_user_currency_code(), 'Currency is not overwritten if cookie is set.');
+    $this->assertEqual(commerce_default_currency(), $currency_code, 'Staic cache currency is not overwritten if cookie is set.');
+    $this->assertEqual(commerce_default_currency(), $_COOKIE[$this->cookieName], 'Cookie currency is not overwritten if cookie is set.');
+
+    // Set currency only if no cookie is set.
+    unset($_COOKIE[$this->cookieName]);
+    commerce_multicurrency_set_user_currency_code('EUR', FALSE);
+    $this->assertEqual('EUR', commerce_multicurrency_get_user_currency_code(), 'Currency is set if no cookie is set.');
+    $this->assertEqual('EUR', $currency_code, 'Static cache currency is set if no cookie is set.');
+    // We can't check if cookie is set in unit tests.
+  }
+}

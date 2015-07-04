@@ -1,0 +1,19 @@
+name = "Commerce Multicurrency"
+package = "Commerce"
+description = "Commerce multicurrency support enhancements"
+
+core = "7.x"
+configure = admin/commerce/config/currency
+
+dependencies[]="commerce_ui"
+dependencies[]="commerce_product_pricing"
+
+; Tests
+files[] = tests/commerce_multicurrency.test
+
+; Information added by Drupal.org packaging script on 2015-07-02
+version = "7.x-1.3+11-dev"
+core = "7.x"
+project = "commerce_multicurrency"
+datestamp = "1435848843"
+

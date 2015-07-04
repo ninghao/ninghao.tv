@@ -1,0 +1,572 @@
+<?php
+/**
+ * @file
+ * Enhancements for the commerce currency support.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function commerce_multicurrency_menu() {
+  $items = array();
+  $items['admin/commerce/config/currency/conversion'] = array(
+    'title' => 'Currency conversion',
+    'description' => 'Configure currency conversion.',
+    'page provider' => 'drupal_get_form',
+    'page arguments' => array('commerce_multicurrency_conversion_settings_form'),
+    'access arguments' => array('configure store'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'commerce_multicurrency.admin.inc',
+    'weight' => 1,
+  );
+  $items['admin/commerce/config/currency/handling'] = array(
+    'title' => 'Currency handling',
+    'description' => 'Configure currency handling.',
+    'page provider' => 'drupal_get_form',
+    'page arguments' => array('commerce_multicurrency_handling_settings_form'),
+    'access arguments' => array('configure store'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'commerce_multicurrency.admin.inc',
+    'weight' => 2,
+  );
+  $items['commerce_currency_select/%'] = array(
+    'title' => 'Set Active Currency',
+    'page callback' => 'commerce_multicurrency_set_user_currency_code_callback',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+    'page arguments' => array(1),
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_menu_alter().
+ */
+function commerce_multicurrency_menu_alter(&$items) {
+  $items['admin/commerce/config/currency/settings'] = $items['admin/commerce/config/currency'];
+  $items['admin/commerce/config/currency/settings']['type'] = MENU_DEFAULT_LOCAL_TASK;
+}
+
+/**
+ * Implements hook_hook_info().
+ */
+function commerce_multicurrency_hook_info() {
+  $hooks = array(
+    'commerce_multicurrency_exchange_rate_sync_provider_info' => array(
+      'group' => 'commerce_multicurrency',
+    ),
+    'commerce_multicurrency_exchange_rate_sync_provider_info_alter' => array(
+      'group' => 'commerce_multicurrency',
+    ),
+  );
+  return $hooks;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function commerce_multicurrency_theme() {
+  return array(
+    'commerce_multicurrency_selector_menu' => array(
+      'variables' => array(
+        'current_currency' => commerce_multicurrency_get_user_currency_code(),
+        'enabled_currencies' => commerce_currencies(TRUE),
+      ),
+      'path' => drupal_get_path('module', 'commerce_multicurrency') . '/theme',
+      'template' => 'commerce-multicurrency-selector-menu',
+    ),
+  );
+}
+
+/**
+ * Returns currency exchange rate sync providers.
+ *
+ * Returns all available  currency exchange rate sync providers or as single
+ * provider if a code is defined. If no matching provider was found FALSE is
+ * returned.
+ *
+ * @param string $code
+ *   The code of the currency exchange rate sync provider to return.
+ *
+ * @return array|FALSE
+ *   List of providers, provider or FALSE on failure.
+ */
+function commerce_multicurrency_commerce_multicurrency_exchange_rate_sync_provider($code = NULL) {
+  $providers = module_invoke_all('commerce_multicurrency_exchange_rate_sync_provider_info');
+  drupal_alter('commerce_multicurrency_exchange_rate_sync_provider_info', $providers);
+  if ($code) {
+    if (isset($providers[$code])) {
+      return $providers[$code];
+    }
+    return FALSE;
+  }
+  return $providers;
+}
+
+/**
+ * Implements hook_commerce_multicurrency_exchange_rate_sync_provider_info().
+ */
+function commerce_multicurrency_commerce_multicurrency_exchange_rate_sync_provider_info() {
+  return array(
+    'ecb' => array(
+      'title' => t('European Central Bank'),
+      'callback' => 'commerce_multicurrency_exchange_rate_sync_provider_ecb',
+      'file' => drupal_get_path('module', 'commerce_multicurrency') . '/commerce_multicurrency.ecb.inc',
+    ),
+    'google' => array(
+      'title' => t('Google exchange'),
+      'callback' => 'commerce_multicurrency_exchange_rate_sync_provider_google',
+      'file' => drupal_get_path('module', 'commerce_multicurrency') . '/commerce_multicurrency.google.inc',
+    ),
+  );
+}
+
+/**
+ * Implements hook_commerce_currency_info_alter().
+ *
+ * On disabled cross conversion inject dedicated currency conversion callback.
+ * Set's the synced conversion rates into the default conversion_rate setting.
+ */
+function commerce_multicurrency_commerce_currency_info_alter(&$currencies, $langcode) {
+  $default_currency_code = commerce_default_currency();
+  $conversion_callback = NULL;
+  $conversion_settings = FALSE;
+  if (!variable_get('commerce_multicurrency_use_cross_conversion', TRUE)) {
+    $conversion_callback = 'commerce_multicurrency_conversion';
+  }
+  else {
+    $conversion_settings = variable_get('commerce_multicurrency_conversion_settings', array());
+  }
+
+  foreach ($currencies as $currency_code => &$currency_info) {
+    $currency_info['conversion_callback'] = $conversion_callback;
+    if ($conversion_settings
+      && !empty($conversion_settings[$default_currency_code]['rates'][$currency_code])
+      && $conversion_settings[$default_currency_code]['rates'][$currency_code]['rate'] != 0
+    ) {
+      $currency_info['conversion_rate'] = 1 / $conversion_settings[$default_currency_code]['rates'][$currency_code]['rate'];
+    }
+  }
+}
+
+/**
+ * Converts a currency amount into another.
+ *
+ * @param integer $amount
+ *   The amount to convert.
+ * @param string $currency_code
+ *   The currency code of the amount.
+ * @param string $target_currency_code
+ *   The currency code to convert the amount to.
+ *
+ * @return integer|FALSE
+ *   The converted amount or FALSE on failure.
+ */
+function commerce_multicurrency_conversion($amount, $currency_code, $target_currency_code) {
+  $conversion_settings = &drupal_static(__FUNCTION__, FALSE);
+
+  // Skip - makes no sense to calculate here.
+  if ($currency_code == $target_currency_code) {
+    return $amount;
+  }
+
+  // Check if there are conversion settings.
+  if ($conversion_settings == FALSE && !($conversion_settings = variable_get('commerce_multicurrency_conversion_settings', FALSE))) {
+    watchdog(
+      'commerce_multicurrency', 'No conversion rates found - please configure them!',
+      array(),
+      WATCHDOG_ERROR,
+      url('admin/commerce/config/currency/conversion')
+    );
+    return FALSE;
+  }
+
+  // Check if there are conversion settings for the specified currencies.
+  if (empty($conversion_settings[$currency_code]['rates'][$target_currency_code]['rate'])) {
+    watchdog(
+      'commerce_multicurrency', 'No conversion rate from %source_currency to  %target_currency found - please configure it!',
+      array('%source_currency' => $currency_code, '%target_currency' => $target_currency_code),
+      WATCHDOG_ERROR,
+      url('admin/commerce/config/currency/conversion')
+    );
+    return FALSE;
+  }
+
+  return $amount * $conversion_settings[$currency_code]['rates'][$target_currency_code]['rate'];
+}
+
+/**
+ * Implements hook_cron().
+ *
+ * Queues currencies for updates.
+ */
+function commerce_multicurrency_cron() {
+  $currencies = commerce_currencies(TRUE);
+
+  if (!($conversion_settings = variable_get('commerce_multicurrency_conversion_settings', FALSE))) {
+    return;
+  }
+
+  $queue = DrupalQueue::get('commerce_multicurrency_sync_exchange_rates');
+  foreach ($currencies as $currency_code => $currency) {
+    $currencies_to_sync = $currencies;
+    unset($currencies_to_sync[$currency_code]);
+    $currency_sync_item = array(
+      'currency_code' => $currency_code,
+      'target_currencies' => empty($currencies_to_sync) ? array() : array_combine(array_keys($currencies_to_sync), array_keys($currencies_to_sync)),
+    );
+
+    // Check if there are individual settings per currency to currency rate.
+    if (!empty($conversion_settings[$currency_code]) && empty($conversion_settings[$currency_code]['sync'])) {
+      foreach ($conversion_settings[$currency_code]['rates'] as $target_currency_code => $settings) {
+        // If this combination is excluded from autosync remove it.
+        if (empty($settings['sync'])) {
+          unset($currency_sync_item['target_currencies'][$target_currency_code]);
+        }
+      }
+    }
+    $queue->createItem($currency_sync_item);
+  }
+  $queue->createItem('finish');
+}
+
+/**
+ * Implements hook_cron_queue_info().
+ */
+function commerce_multicurrency_cron_queue_info() {
+  $queues['commerce_multicurrency_sync_exchange_rates'] = array(
+    'worker callback' => 'commerce_multicurrency_sync_exchange_rates',
+    'time' => 60,
+  );
+  return $queues;
+}
+
+/**
+ * Update the currency exchange rates.
+ *
+ * Use the configured sync provider to do so.
+ *
+ * @see commerce_multicurrency_cron()
+ * @see commerce_multicurrency_cron_queue_info()
+ */
+function commerce_multicurrency_sync_exchange_rates($currency_sync_item) {
+  if ($currency_sync_item == 'finish') {
+    // Make sure the core commerce settings are in sync.
+    commerce_currencies(FALSE, TRUE);
+    return;
+  }
+
+  $sync_provider = commerce_multicurrency_commerce_multicurrency_exchange_rate_sync_provider(variable_get('commerce_multicurrency_sync_provider', 'ecb'));
+  if (!empty($sync_provider['file'])) {
+    require_once $sync_provider['file'];
+  }
+  $rates = $sync_provider['callback']($currency_sync_item['currency_code'], $currency_sync_item['target_currencies']);
+  $conversion_settings = variable_get('commerce_multicurrency_conversion_settings', array());
+  foreach ($rates as $target_currency_code => $rate) {
+    $conversion_settings[$currency_sync_item['currency_code']]['rates'][$target_currency_code]['rate'] = $rate;
+  }
+  variable_set('commerce_multicurrency_conversion_settings', $conversion_settings);
+}
+
+/**
+ * Function to trigger the currency exchange rate synchronization.
+ */
+function commerce_multicurrency_sync_exchange_rates_now() {
+  $queue = DrupalQueue::get('commerce_multicurrency_sync_exchange_rates');
+  $queue->createQueue();
+
+  commerce_multicurrency_cron();
+
+  // Build batch.
+  $batch = array(
+    'title' => t('Synchronize currencyexchange rates.'),
+    'operations' => array(),
+    'init_message' => t('Synchronisation is starting.'),
+    'progress_message' => t('Processed @current out of @total currencies.'),
+    'error_message' => t('Synchronisation has encountered an error.'),
+    'file' => drupal_get_path('module', 'commerce_multicurrency') . '/commerce_multicurrency.module',
+  );
+
+  // Register queue items to process in batch.
+  while (($item = $queue->claimItem())) {
+    $batch['operations'][] = array(
+      'commerce_multicurrency_sync_exchange_rates',
+      array($item->data),
+    );
+  }
+  $queue->deleteQueue();
+  batch_set($batch);
+}
+
+/**
+ * Implements hook_help().
+ */
+function commerce_multicurrency_help($path, $arg) {
+  switch ($path) {
+    // Main module help for the block module.
+    case 'admin/commerce/config/currency/handling':
+      $text_1 = t('There are two fundamental different ways of how to handle multiple currencies:');
+      $list_item_1 = t('Use a conversion to get the appropriate amount for a currency.');
+      $list_item_2 = t('Use a dedicated price field for each currency.');
+      $text_2 = t(
+        'While the <a href="!conversion_settings_page_url">conversion settings page</a> of this modules help you to manage  your conversion this settings are dedicated to the second approach. If you enable the dedicated currency price fields you\'ll also get a new rule to set the appropriate currency price on the rules event "Calculating the sell price of a product"',
+        array('!conversion_settings_page_url' => url('admin/commerce/config/currency/conversion'))
+      );
+      return
+        '<p>' .  $text_1 . '<ul><li>' . $list_item_1 . '</li><li>' . $list_item_2 . '</li></ul>' .
+        $text_2 . '</p>';
+  }
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function commerce_multicurrency_block_info() {
+  $blocks = array();
+  $blocks['currency_selector'] = array(
+    'info' => t('Currency Selector'),
+    'cache' => DRUPAL_NO_CACHE,
+  );
+  $blocks['currency_menu'] = array(
+    'info' => t('Currency Menu Selector'),
+    'cache' => DRUPAL_NO_CACHE,
+  );
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function commerce_multicurrency_block_view($delta) {
+  $block = array();
+  switch ($delta) {
+    case 'currency_selector':
+      $block['subject'] = t('Select currency');
+      $block['content'] = drupal_get_form('commerce_multicurrency_selector_form');
+      break;
+
+    case 'currency_menu':
+      $block['subject'] = t('Select currency');
+      $block['content'] = theme('commerce_multicurrency_selector_menu', array(
+        'user_currency' => commerce_multicurrency_get_user_currency_code(),
+        'enabled_currencies' => commerce_currencies(TRUE),
+      ));
+      break;
+  }
+  return $block;
+}
+
+/**
+ * Form for the currency selector block.
+ */
+function commerce_multicurrency_selector_form($form, &$form_state) {
+  $form['#attached']['js'] = array(
+    drupal_get_path('module', 'commerce_multicurrency') . '/commerce_multicurrency.js',
+  );
+  $form['selected_currency'] = array(
+    '#type' => 'select',
+    '#options' => commerce_currency_code_options_list(),
+    '#default_value' => commerce_multicurrency_get_user_currency_code(),
+  );
+  $form['save_selected_currency'] = array(
+    '#value' => t('Save'),
+    '#type' => 'submit',
+  );
+  return $form;
+}
+
+/**
+ * Submit handler for the currency selector block form.
+ */
+function commerce_multicurrency_selector_form_submit($form, &$form_state) {
+  commerce_multicurrency_set_user_currency_code($form_state['values']['selected_currency']);
+}
+
+/**
+ * Handles requests to the currency set menu callback.
+ *
+ * @param string $currency_code
+ *   The currency code to set the user currency to.
+ */
+function commerce_multicurrency_set_user_currency_code_callback($currency_code) {
+  // Ensure this page isn't cached.
+  drupal_page_is_cacheable(FALSE);
+  commerce_multicurrency_set_user_currency_code($currency_code);
+  drupal_goto('<front>');
+}
+
+/**
+ * Store the currency_code to use for the user.
+ *
+ * Invokes the rules event commerce_multicurrency_user_currency_set.
+ *
+ * @param string $currency_code
+ *   The currency code to set the user currency to.
+ * @param boolean $overwrite_cookie
+ *   Set to FALSE if the currency shouldn't be changed if the cookie already
+ *   exists.
+ */
+function commerce_multicurrency_set_user_currency_code($currency_code, $overwrite_cookie = TRUE) {
+  if ($overwrite_cookie || empty($_COOKIE['Drupal_visitor_commerce_currency'])) {
+    $enabled_currencies = commerce_currencies(TRUE);
+    if (isset($enabled_currencies[$currency_code])) {
+      $old_currency_code = commerce_multicurrency_get_user_currency_code();
+
+      // Inject currency into the static cache.
+      $current_currency_code = &drupal_static('commerce_multicurrency_get_user_currency_code', FALSE);
+      $current_currency_code = $currency_code;
+
+      // Set cookie.
+      user_cookie_save(array('commerce_currency' => $currency_code));
+
+      rules_invoke_event('commerce_multicurrency_user_currency_set', $currency_code, $old_currency_code);
+
+      // Refresh the order. Triggers also the update of line item prices.
+      // @see commerce_multicurrency_commerce_cart_line_item_refresh().
+      global $user;
+      if (($order = commerce_cart_order_load($user->uid))) {
+        commerce_cart_order_refresh($order);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_commerce_cart_line_item_refresh().
+ */
+function commerce_multicurrency_commerce_cart_line_item_refresh($line_item, $order_wrapper) {
+  $line_item_wrapper = entity_metadata_wrapper('commerce_line_item', $line_item);
+  $currency_code = commerce_multicurrency_get_user_currency_code();
+  if ($line_item_wrapper->commerce_total->currency_code->value() != $currency_code) {
+    $amount = commerce_currency_convert(
+      $line_item_wrapper->commerce_total->amount->value(),
+      $line_item_wrapper->commerce_total->currency_code->value(),
+      $currency_code
+    );
+    $line_item_wrapper->commerce_total->amount = $amount;
+    $line_item_wrapper->commerce_total->currency_code = $currency_code;
+  }
+  $line_item_wrapper->save();
+}
+
+/**
+ * Returns the currency code to use for the current user.
+ * @return string
+ *   The currency code.
+ */
+function commerce_multicurrency_get_user_currency_code() {
+  $currency_code = &drupal_static(__FUNCTION__, FALSE);
+  if ($currency_code) {
+    return $currency_code;
+  }
+
+  // If there's a cookie with a selected currency ensure it's a available one.
+  if (isset($_COOKIE['Drupal_visitor_commerce_currency'])) {
+    $enabled_currencies = commerce_currencies(TRUE);
+    if (!empty($enabled_currencies[$_COOKIE['Drupal_visitor_commerce_currency']])) {
+      return $currency_code = $_COOKIE['Drupal_visitor_commerce_currency'];
+    }
+  }
+
+  return $currency_code = commerce_default_currency();
+}
+
+/**
+ * Implements hook_entity_property_info_alter().
+ */
+function commerce_multicurrency_entity_property_info_alter(&$info) {
+  // Add the current user's currency to the site information.
+  $info['site']['properties']['commerce_currency'] = array(
+    'label' => t("User's currency"),
+    'description' => t('The currency to use for the current user.'),
+    'getter callback' => 'commerce_multicurrency_get_properties',
+    'type' => 'text',
+  );
+}
+
+/**
+ * Entity metadata callback: returns the current user's currency.
+ *
+ * @see commerce_multicurrency_entity_property_info_alter()
+ */
+function commerce_multicurrency_get_properties($data, array $options, $name) {
+  switch ($name) {
+    case 'commerce_currency':
+      return commerce_multicurrency_get_user_currency_code();
+  }
+}
+
+/**
+ * Implements hook_commerce_price_field_calculation_options().
+ *
+ * @see commerce_multicurrency_commerce_price_field_formatter_prepare_view()
+ */
+function commerce_multicurrency_commerce_price_field_calculation_options($field, $instance, $view_mode) {
+  // If this is a single value custom price field attached to a product.
+  if (($instance['entity_type'] == 'commerce_product' || $field['entity_types'] == array('commerce_product')) &&
+    $field['field_name'] != 'commerce_price' && $field['cardinality'] == 1) {
+    return array('currency_specific_price' => t('Commerce Multicurrency: Display the price in a specific currency.'));
+  }
+}
+
+/**
+ * Implements hook_commerce_price_field_formatter_prepare_view().
+ *
+ * Allows to configure which fields are send to the rules processing.
+ *
+ * @see commerce_product_pricing_commerce_price_field_formatter_prepare_view()
+ */
+function commerce_multicurrency_commerce_price_field_formatter_prepare_view($entity_type, $entities, $field, $instances, $langcode, &$items, $displays) {
+  // If this is a single value purchase price field attached to a product...
+  if ($entity_type == 'commerce_product' && $field['module'] == 'commerce_price' && $field['cardinality'] == 1 && $field['field_name'] != 'commerce_price') {
+
+    // Prepare the items for each entity passed in.
+    foreach ($entities as $product_id => $product) {
+      // If this price should be converted...
+      if (!empty($displays[$product_id]['settings']['calculation']) &&
+        $displays[$product_id]['settings']['calculation'] == 'currency_specific_price') {
+        // If this price has already been converted, reset it to its original
+        // value so it can be re-converted afresh in the current context.
+        if (isset($items[$product_id][0]['original'])) {
+          $original = $items[$product_id][0]['original'];
+          $items[$product_id] = array(0 => $original);
+
+          // Reset the price field value on the product object used to perform
+          // the conversion.
+          foreach ($product->commerce_price as $langcode => $value) {
+            $product->commerce_price[$langcode] = $items[$product_id];
+          }
+        }
+        else {
+          // Save the original value for use in subsequent conversions.
+          $original = isset($items[$product_id][0]) ? $items[$product_id][0] : NULL;
+        }
+
+        // First create a pseudo product line item that we will pass to Rules.
+        $line_item = commerce_product_line_item_new($product);
+        // Overwrite the unit price by the value of the current field.
+        $line_item->commerce_unit_price = $product->{$field['field_name']};
+        // If the current field doesn't contain a value - fake an empty one.
+        if (empty($line_item->commerce_unit_price)) {
+          $line_item->commerce_unit_price = array(
+            LANGUAGE_NONE => array(
+              array(
+                'amount' => 0,
+                'currency_code' => commerce_default_currency(),
+                'data' => array(),
+              ),
+            ),
+          );
+        }
+
+        // Fire the rules event to handle the display currency.
+        rules_invoke_event('commerce_multicurrency_set_display_price', $line_item, $field['field_name']);
+
+        // Replace the data being displayed with data from the converted price.
+        $items[$product_id] = array();
+        $items[$product_id][0] = entity_metadata_wrapper('commerce_line_item', $line_item)->commerce_unit_price->value();
+        $items[$product_id][0]['original'] = $original;
+      }
+    }
+  }
+}

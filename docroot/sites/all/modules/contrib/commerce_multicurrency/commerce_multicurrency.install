@@ -1,0 +1,14 @@
+<?php
+/**
+ * @file
+ * Enhancements for the commerce currency support.
+ */
+
+/**
+ * Implements hook_uninstall().
+ */
+function commerce_multicurrency_uninstall() {
+  variable_del('commerce_multicurrency_conversion_settings');
+  variable_del('commerce_multicurrency_sync_provider');
+  variable_del('commerce_multicurrency_use_cross_conversion');
+}
