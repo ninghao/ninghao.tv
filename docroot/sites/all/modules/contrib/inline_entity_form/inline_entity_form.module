@@ -422,7 +422,7 @@ function inline_entity_form_field_widget_form(&$form, &$form_state, $field, $ins
   $element = array(
     '#type' => 'fieldset',
     '#tree' => TRUE,
-    '#description' => $instance['description'],
+    '#description' => filter_xss_admin($instance['description']),
     '#prefix' => '<div id="' . $wrapper . '">',
     '#suffix' => '</div>',
     '#attached' => array(
