@@ -1,0 +1,51 @@
+<?php
+
+/**
+ * @file
+ * Main module file for Commerce Rules Extra.
+ */
+
+// Include all events, actions and conditions files.
+global $_commerce_rules_extra_cre_includes;
+$_commerce_rules_extra_cre_includes = array();
+$dir = drupal_get_path('module', 'commerce_rules_extra');
+foreach (array('events', 'conditions', 'actions') as $subdir) {
+  $_commerce_rules_extra_cre_includes[$subdir] = glob($dir . '/includes/' . $subdir . '/*.inc', GLOB_NOSORT);
+  foreach ($_commerce_rules_extra_cre_includes[$subdir] as $include) {
+    include_once $include;
+  }
+}
+
+/**
+ * Implements hook_entity_property_info_alter().
+ */
+function commerce_rules_extra_entity_property_info_alter(&$info) {
+  $info['commerce_order']['properties']['commerce_order_quantity'] = array(
+    'type' => 'integer',
+    'label' => t('Total quantity'),
+    'description' => t('Total quantity of the order.'),
+    'getter callback' => 'commerce_rules_extra_get_quantity_property',
+    'computed' => TRUE,
+  );
+}
+
+/**
+ * Callback function for the Total Quantity of the Order.
+ */
+function commerce_rules_extra_get_quantity_property($order, array $options, $name) {
+  $wrapper = entity_metadata_wrapper('commerce_order', $order);
+  return commerce_line_items_quantity($wrapper->commerce_line_items, commerce_product_line_item_types());
+}
+
+/**
+ * Implements hook_theme().
+ */
+function commerce_rules_extra_theme($existing, $type, $theme, $path) {
+  return array(
+    'form--cre_condition' => array(
+      'template' => 'form--cre_condition',
+      'render element' => 'form',
+      'path' => $path . '/templates',
+    ),
+  );
+}
