@@ -1,0 +1,25 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the commerce_alipay module.
+ */
+
+/**
+ * Remove useless variables commerce_alipay_notity_[NOTIFY_ID] from database.
+ */
+function commerce_alipay_update_7100() {
+  // Remove all the useless configuration variables added by the module.
+  $res = db_delete('variable')
+    ->condition('name', 'commerce_alipay_notity_%', 'LIKE')
+    ->execute();
+
+  // Provide some information about the number of variables removed.
+  if ($res === 0) {
+    $ret = t('There were no useless <em>commerce_alipay_notity_[NOTIFY_ID]</em> variables found or removed from the database.');
+  }
+  else {
+    $ret = t('A total of @res variables <em>commerce_alipay_notity_[NOTIFY_ID]</em> removed from the variables database table.', array('@res' => $res));
+  }
+  return $ret;
+}

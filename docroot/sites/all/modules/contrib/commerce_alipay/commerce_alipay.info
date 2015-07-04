@@ -1,0 +1,15 @@
+name = Alipay
+description = Implements Alipay payment services for use with Drupal Commerce.
+package = Commerce (Alipay)
+dependencies[] = commerce
+dependencies[] = commerce_ui
+dependencies[] = commerce_payment
+dependencies[] = commerce_order
+core = 7.x
+
+; Information added by Drupal.org packaging script on 2014-11-18
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "commerce_alipay"
+datestamp = "1416295682"
+
