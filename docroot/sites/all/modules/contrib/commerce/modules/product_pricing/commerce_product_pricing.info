@@ -1,0 +1,16 @@
+name = Product Pricing
+description = Enables Rules based product sell price calculation for dynamic product pricing.
+package = Commerce
+dependencies[] = commerce
+dependencies[] = commerce_price
+dependencies[] = commerce_product_reference
+dependencies[] = entity
+dependencies[] = rules
+core = 7.x
+
+; Information added by Drupal.org packaging script on 2015-06-23
+version = "7.x-1.11+12-dev"
+core = "7.x"
+project = "commerce"
+datestamp = "1435024986"
+

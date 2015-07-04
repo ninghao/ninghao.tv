@@ -1,0 +1,143 @@
+<?php
+
+/**
+ * Implements hook_schema().
+ */
+function commerce_checkout_schema() {
+  $schema = array();
+
+  $schema['commerce_checkout_pane'] = array(
+    'description' => 'Checkout pane configuration data.',
+    'fields' => array(
+      'pane_id' => array(
+        'description' => 'The machine readable name of the order state.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'page' => array(
+        'description' => 'The ID of the checkout page on which this pane appears.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '1',
+      ),
+      'fieldset' => array(
+        'description' => 'Boolean value indicating whether or not the pane should appear in a fieldset.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+      'collapsible' => array(
+        'description' => 'Boolean value indicating whether or not the pane should appear collapsed.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'collapsed' => array(
+        'description' => 'Boolean value indicating whether or not the pane should appear collapsed.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'weight' => array(
+        'description' => 'The sorting weight of the status for lists of statuses.',
+        'type' => 'int',
+        'size' => 'small',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'enabled' => array(
+        'description' => 'Boolean value indicating whether or not the pane is enabled.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+      'review' => array(
+        'description' => 'Boolean value indicating whether or not the pane should appear on the checkout review.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+    ),
+    'primary key' => array('pane_id'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function commerce_checkout_uninstall() {
+  variable_del('commerce_checkout_completion_message');
+}
+
+/**
+ * Delete the deprecated checkout completion message override variable.
+ */
+function commerce_checkout_update_7100() {
+  variable_del('commerce_checkout_completion_message_override');
+}
+
+/**
+ * Disable the new local action to simulate checkout completion for an order.
+ */
+function commerce_checkout_update_7101() {
+  variable_set('commerce_order_simulate_checkout_link', FALSE);
+  return t('A new local action link on order edit forms for simulating checkout completion for an order has been disabled by default; enable it on the order settings form if desired.');
+}
+
+/**
+ * Disable the new checkout completion rule that updates order created dates to
+ * the checkout completion date.
+ */
+function commerce_checkout_update_7102() {
+  variable_set('enable_commerce_checkout_order_created_date_update', FALSE);
+  return t('A new core checkout completion rule has been added that updates order creation timestamps to the time of checkout completion. It has been disabled by default to not interfere with existing order workflows, but you may enable it in your checkout settings if desired.');
+}
+
+/**
+ * If the variable commerce_checkout_run_update_7103 is set, change all user
+ * names that contain @ and look like an e-mail address to prevent the
+ * disclosure of e-mail addresses to non-trusted users. Refer to the release
+ * notes for Commerce 1.10 for instructions on how to set this variable.
+ * Otherwise you are responsible to clean the usernames on your own.
+ */
+function commerce_checkout_update_7103(&$sandbox) {
+  // Every site may not want to disrupt all their account usernames with this
+  // update, so we require sites to set a variable explicitly to run the update.
+  // Sites that do not must do their own handling of the security issue.
+  if (!variable_get('commerce_checkout_run_update_7103', FALSE)) {
+    return t('Skipped update 7103 because the variable commerce_checkout_run_update_7103 is not set. You must make sure usernames are not valid e-mail adresses on your own.');
+  }
+
+  if (!isset($sandbox['progress'])) {
+    $sandbox['progress'] = 0;
+    $sandbox['max'] = db_query("SELECT COUNT(*) FROM {users} WHERE name LIKE '%@%'")->fetchField();
+  }
+
+  // Update 100 user names at a time.
+  $names = db_query("SELECT uid, name FROM {users} WHERE name LIKE '%@%' LIMIT 100")->fetchAllKeyed();
+  $order = new stdClass();
+  foreach ($names as $uid => $name) {
+    $order->mail = $name;
+    $new_name = commerce_order_get_properties($order, array(), 'mail_username');
+    db_update('users')
+      ->fields(array(
+        'name' => $new_name,
+      ))
+      ->condition('uid', $uid)
+      ->execute();
+    $sandbox['progress']++;
+  }
+
+  $sandbox['#finished'] = empty($names) ? 1 : ($sandbox['progress'] / $sandbox['max']);
+
+  return t('Usernames resembling e-mail addresses have been cleaned.');
+}
