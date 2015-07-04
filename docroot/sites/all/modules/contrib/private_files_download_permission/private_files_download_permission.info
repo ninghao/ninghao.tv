@@ -1,0 +1,12 @@
+name = Private files download permission
+description = Allows by-user and by-role downloads from private file system directories.
+core = 7.x
+package = Access control
+configure = admin/config/media/private-files-download-permission
+
+; Information added by Drupal.org packaging script on 2015-01-01
+version = "7.x-2.3+7-dev"
+core = "7.x"
+project = "private_files_download_permission"
+datestamp = "1420135983"
+
