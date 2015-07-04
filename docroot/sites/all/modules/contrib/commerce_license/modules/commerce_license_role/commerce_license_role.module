@@ -1,0 +1,127 @@
+<?php
+
+/**
+ * @file
+ * Provides a license type for selling roles.
+ */
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function commerce_license_role_ctools_plugin_directory($owner, $plugin_type) {
+  if ($owner == 'commerce_license') {
+    return "plugins/$plugin_type";
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function commerce_license_role_menu() {
+  $items['admin/commerce/config/license/role'] = array(
+    'title' => 'Role',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_license_role_settings_form'),
+    'access arguments' => array('administer licenses'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'includes/commerce_license_role.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Return a list of product types used for role licensing.
+ *
+ * @return
+ *   An array of product type machine names.
+ */
+function commerce_license_role_product_types() {
+  $role_product_types = variable_get('commerce_license_role_product_types', array());
+  $role_product_types = array_filter($role_product_types);
+  // Return only those $role_product_types that are still licensable.
+  $license_product_types = commerce_license_product_types();
+  return array_intersect($role_product_types, $license_product_types);
+}
+
+/**
+ * Implements hook_commerce_license_types_list_alter().
+ *
+ * Removes the Role license type option from those product types that don't
+ * have it configured.
+ */
+function commerce_license_role_commerce_license_types_list_alter(&$types, $product) {
+  if (!empty($product) && !in_array($product->type, commerce_license_role_product_types())) {
+    unset($types['role']);
+  }
+}
+
+/**
+ * Implements hook_flush_caches().
+ *
+ * Ensures that products have the required commerce_license_role field.
+ */
+function commerce_license_role_flush_caches() {
+  $product_types = commerce_license_role_product_types();
+  commerce_license_role_configure_product_types($product_types);
+}
+
+/**
+ * Ensures that the provided product types have the required fields.
+ *
+ * Fields:
+ * - commerce_license_role: a a list(text) field pointing to a role.
+ *
+ * @param $types
+ *   An array of product type machine names.
+ */
+function commerce_license_role_configure_product_types($types) {
+  $field = field_info_field('commerce_license_role');
+  if (!$field) {
+    $field = array(
+      'field_name' => 'commerce_license_role',
+      'cardinality' => 1,
+      'type' => 'list_text',
+      'locked' => TRUE,
+      'settings' => array(
+        'allowed_values_function' => 'commerce_license_role_allowed_values',
+      ),
+    );
+    field_create_field($field);
+  }
+
+  $existing = array();
+  if (!empty($field['bundles']['commerce_product'])) {
+    $existing = $field['bundles']['commerce_product'];
+  }
+  // Create instances on newly configured product types.
+  foreach (array_diff($types, $existing) as $new_bundle) {
+    $instance = array(
+      'field_name' => 'commerce_license_role',
+      'entity_type' => 'commerce_product',
+      'bundle' => $new_bundle,
+      'label' => t('Role'),
+      'required' => TRUE,
+      'widget' => array(
+        'type' => 'options_select',
+        'weight' => 9,
+      ),
+    );
+    field_create_instance($instance);
+  }
+  // Remove instances from product types that can no longer have role licenses.
+  foreach (array_diff($existing, $types) as $removed_bundle) {
+    $instance = field_info_instance('commerce_product', 'commerce_license_role', $removed_bundle);
+    field_delete_instance($instance, TRUE);
+  }
+}
+
+/**
+ * Allowed values callback for roles.
+ */
+function commerce_license_role_allowed_values($field, $instance, $entity_type, $entity) {
+  $roles = user_roles(TRUE);
+  unset($roles[DRUPAL_ANONYMOUS_RID]);
+  unset($roles[DRUPAL_AUTHENTICATED_RID]);
+  return $roles;
+}

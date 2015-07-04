@@ -1,0 +1,332 @@
+<?php
+
+/**
+ * Implements hook_schema().
+ */
+function commerce_license_schema() {
+  $schema['commerce_license'] = array(
+    'description' => 'The base table for the commerce_license entity type.',
+    'fields' => array(
+      'license_id' => array(
+        'description' => 'The primary identifier for a license.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      // Defaults to NULL in order to avoid a brief period of potential
+      // deadlocks on the index.
+      'revision_id' => array(
+        'description' => 'The current {commerce_license_revision}.revision_id identifier.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+      'type' => array(
+        'description' => 'The license type.',
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+      ),
+      'uid' => array(
+        'description' => 'The {users}.uid that created this license belongs to.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'product_id' => array(
+        'description' => 'The {commerce_product}.product_id that is licensed.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'description' => 'The license status.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'granted' => array(
+        'description' => 'The Unix timestamp when the license was granted.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'expires' => array(
+        'description' => 'The Unix timestamp when the license expires. 0 for never.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'expires_automatically' => array(
+        'description' => 'Whether the module should expire the license automatically.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+    ),
+    'primary key' => array('license_id'),
+    'indexes' => array(
+      'uid' => array('uid'),
+      'type' => array('type'),
+      'status' => array('status'),
+      'product_id' => array('product_id'),
+    ),
+    'unique keys' => array(
+      'revision_id' => array('revision_id'),
+    ),
+    'foreign keys' => array(
+      'current_revision' => array(
+        'table' => 'commerce_license_revision',
+        'columns'=> array('revision_id' => 'revision_id'),
+      ),
+      'owner' => array(
+        'table' => 'users',
+        'columns' => array('uid' => 'uid'),
+      ),
+      'product' => array(
+        'table' => 'commerce_product',
+        'columns' => array('product_id' => 'product_id'),
+      ),
+    ),
+  );
+  $schema['commerce_license_revision'] = array(
+    'description' => 'Stores information about each saved revision of a {commerce_license}.',
+    'fields' => array(
+      'license_id' => array(
+        'description' => 'The {commerce_license}.license_id of the license this revision belongs to.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'revision_id' => array(
+        'description' => 'The primary identifier for this revision.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'product_id' => array(
+        'description' => 'The {commerce_product}.product_id that is licensed for this revision.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'description' => 'The license status for this revision.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'revision_created' => array(
+        'description' => 'The Unix timestamp when the revision was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'revision_ended' => array(
+        'description' => 'The Unix timestamp when the revision ended.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('revision_id'),
+    'indexes' => array(
+      'license_id' => array('license_id'),
+      'product_id' => array('product_id'),
+    ),
+    'foreign keys' => array(
+      'license' => array(
+        'table' => 'commerce_license',
+        'columns' => array('license_id' => 'license_id'),
+      ),
+      'product' => array(
+        'table' => 'commerce_product',
+        'columns' => array('product_id' => 'product_id'),
+      ),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function commerce_license_uninstall() {
+  // Delete product and line item fields and their instances.
+  field_delete_field('commerce_license_type');
+  field_delete_field('commerce_license_duration');
+  field_delete_field('commerce_license');
+
+  // Delete variable settings.
+  variable_del('commerce_license_product_types');
+  variable_del('commerce_license_line_item_types');
+}
+
+/**
+ * Add the 'expires_automatically' column to the commerce_license table.
+ */
+function commerce_license_update_7100() {
+  $spec = array(
+    'description' => 'Whether the module should expire the license automatically.',
+    'type' => 'int',
+    'size' => 'tiny',
+    'not null' => TRUE,
+    'default' => 1,
+  );
+  db_add_field('commerce_license', 'expires_automatically', $spec);
+}
+
+/**
+ * Add support for license revisions.
+ */
+function commerce_license_update_7101(&$sandbox) {
+  if (!isset($sandbox['progress'])) {
+    $commerce_license_revision_schema = array(
+      'description' => 'Stores information about each saved revision of a {commerce_license}.',
+      'fields' => array(
+        'license_id' => array(
+          'description' => 'The {commerce_license}.license_id of the license this revision belongs to.',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'revision_id' => array(
+          'description' => 'The primary identifier for this revision.',
+          'type' => 'serial',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'product_id' => array(
+          'description' => 'The {commerce_product}.product_id that is licensed for this revision.',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'status' => array(
+          'description' => 'The license status for this revision.',
+          'type' => 'int',
+          'size' => 'tiny',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'revision_created' => array(
+          'description' => 'The Unix timestamp when the revision was created.',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'revision_ended' => array(
+          'description' => 'The Unix timestamp when the revision ended.',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+      ),
+      'primary key' => array('revision_id'),
+      'indexes' => array(
+        'license_id' => array('license_id'),
+        'product_id' => array('product_id'),
+      ),
+      'foreign keys' => array(
+        'license' => array(
+          'table' => 'commerce_license',
+          'columns' => array('license_id' => 'license_id'),
+        ),
+        'product' => array(
+          'table' => 'commerce_product',
+          'columns' => array('product_id' => 'product_id'),
+        ),
+      ),
+    );
+    db_create_table('commerce_license_revision', $commerce_license_revision_schema);
+
+    // Add the revision_id field to {commerce_license}.
+    $license_revision_id_spec = array(
+      'description' => 'The current {commerce_license_revision}.revision_id identifier.',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => FALSE,
+      'default' => NULL,
+    );
+    db_add_field('commerce_license', 'revision_id', $license_revision_id_spec);
+    db_add_unique_key('commerce_license', 'revision_id', array('revision_id'));
+  }
+
+  // Create the current revision for existing licenses.
+  $max_licenses = db_query('SELECT COUNT(DISTINCT license_id) FROM {commerce_license}')->fetchField();
+  if ($max_licenses) {
+    if (!isset($sandbox['progress'])) {
+      $sandbox['progress'] = 0;
+      $sandbox['current_license_id'] = 0;
+      $sandbox['max'] = $max_licenses;
+    }
+
+    $licenses = db_select('commerce_license', 'cl')
+      ->fields('cl', array('license_id', 'product_id', 'status', 'granted'))
+      ->condition('license_id', $sandbox['current_license_id'], '>')
+      ->range(0, 50)
+      ->orderBy('license_id', 'ASC')
+      ->execute()->fetchAllAssoc('license_id', PDO::FETCH_ASSOC);
+
+    foreach ($licenses as $license) {
+      $revision = array();
+      $revision['license_id'] = $license['license_id'];
+      $revision['product_id'] = $license['product_id'];
+      $revision['status'] = $license['status'];
+      if ($license['granted']) {
+        // Granted is not the most precise timestamp here, because the license
+        // was most likely created before the activation occurred, but it's the
+        // closest we can do.
+        $revision['revision_created'] = $license['granted'];
+      }
+      else {
+        $revision['revision_created'] = REQUEST_TIME;
+      }
+      $revision['revision_ended'] = 0;
+
+      $revision_id = db_insert('commerce_license_revision')
+        ->fields($revision)
+        ->execute();
+      db_update('commerce_license')
+        ->fields(array('revision_id' => $revision_id))
+        ->condition('license_id', $license['license_id'])
+        ->execute();
+
+      $sandbox['progress']++;
+      $sandbox['current_license_id'] = $license['license_id'];
+    }
+
+    if ((empty($sandbox['progress']) || $sandbox['progress'] == $max_licenses)) {
+      $sandbox['progress'] = $sandbox['max'];
+    }
+
+    $sandbox['#finished'] = empty($sandbox['max']) ? 1 : ($sandbox['progress'] / $sandbox['max']);
+  }
+  else {
+    // No licenses needed conversion, nothing else to be done.
+    $sandbox['#finished'] = 1;
+  }
+
+  return t('The update for license revisions ran successfully.');
+}
+
+/**
+ * Change the label of the commerce_license_duration field from
+ * 'License expiration' to 'License duration'.
+ */
+function commerce_license_update_7102(&$sandbox) {
+  foreach (commerce_license_product_types() as $product_type) {
+    $instance = field_info_instance('commerce_product', 'commerce_license_duration', $product_type);
+    if ($instance['label'] == 'License expiration') {
+      $instance['label'] = 'License duration';
+      field_update_instance($instance);
+    }
+  }
+}

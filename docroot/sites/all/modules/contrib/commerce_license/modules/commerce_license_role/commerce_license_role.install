@@ -1,0 +1,14 @@
+<?php
+
+/**
+ * Implements hook_uninstall().
+ */
+function commerce_license_role_uninstall() {
+  // Delete the fields created and attached to this module's bundles.
+  field_attach_delete_bundle('commerce_license', 'role');
+  // Delete the role field.
+  field_delete_field('commerce_license_role');
+
+  // Delete variable settings.
+  variable_del('commerce_license_role_product_types');
+}

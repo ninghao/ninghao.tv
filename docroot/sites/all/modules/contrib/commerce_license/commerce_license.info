@@ -1,0 +1,31 @@
+name = Commerce License
+description = Provides a framework for selling access to local or remote resources.
+package = Commerce (contrib)
+core = 7.x
+configure = admin/commerce/config/license
+dependencies[] = commerce_product
+dependencies[] = commerce_product_reference
+dependencies[] = commerce_line_item
+dependencies[] = commerce_payment
+dependencies[] = ctools
+dependencies[] = entity
+dependencies[] = entity_bundle_plugin
+dependencies[] = entityreference
+dependencies[] = list
+dependencies[] = number
+dependencies[] = views_bulk_operations
+
+files[] = commerce_license.info.inc
+files[] = includes/commerce_license.controller.inc
+files[] = includes/commerce_license.inline_entity_form.inc
+files[] = includes/plugins/license_type/base.inc
+files[] = includes/views/commerce_license.views_controller.inc
+files[] = includes/views/handlers/commerce_license_handler_field_access_details.inc
+files[] = includes/views/plugins/commerce_license_plugin_access_sync.inc
+
+; Information added by Drupal.org packaging script on 2015-06-10
+version = "7.x-1.3+1-dev"
+core = "7.x"
+project = "commerce_license"
+datestamp = "1433934782"
+

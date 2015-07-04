@@ -1,0 +1,10 @@
+<?php
+
+/**
+ * Implements hook_uninstall().
+ */
+function commerce_license_example_uninstall() {
+  // Delete the fields created and attached to this module's bundles.
+  field_attach_delete_bundle('commerce_license', 'example');
+  field_attach_delete_bundle('commerce_license', 'remote_example');
+}

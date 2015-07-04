@@ -1,0 +1,15 @@
+<?php
+
+/**
+ * @file
+ * Provides an example license type for testing and development.
+ */
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function commerce_license_example_ctools_plugin_directory($owner, $plugin_type) {
+  if ($owner == 'commerce_license') {
+    return "plugins/$plugin_type";
+  }
+}
